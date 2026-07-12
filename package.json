@@ -1,0 +1,19 @@
+{
+  "name": "alertiva-video",
+  "version": "1.0.0",
+  "description": "Alertiva News — usine à vidéos verticales (JT du soir + vidéos par article), rendu 100% gratuit en ligne via GitHub Actions.",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "article": "node make-article.mjs",
+    "jt": "node make-jt.mjs",
+    "studio": "remotion studio src/index.ts"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.486",
+    "@remotion/google-fonts": "4.0.486",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "remotion": "4.0.486"
+  }
+}
