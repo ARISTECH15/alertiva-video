@@ -133,17 +133,21 @@ async function main() {
     await recordVideo({ articleId: chosen.id, kind: "article", storagePath, publicUrl, durationSec, title: chosen.title });
     console.log(`   → en ligne : ${publicUrl}`);
 
-    // Dépôt automatique en brouillon TikTok (@alertiva) — résilient : n'interrompt jamais le pipeline.
-    try {
-      const tk = await import("./lib/tiktok.mjs");
-      const token = await tk.ensureAccessToken();
-      const buf = fs.readFileSync(finalOut);
-      const publishId = await tk.postVideoDraft(buf, token);
-      const st = await tk.waitInbox(publishId, token);
-      await tk.recordSocialPost({ mediaUrl: publicUrl, publishId, status: st === "SEND_TO_USER_INBOX" ? "published" : "pending" });
-      console.log(`   → TikTok brouillon : ${st}`);
-    } catch (e) {
-      console.log("   ⚠ TikTok (ignoré) : " + (e.message || e));
+    // Dépôt automatique en brouillon TikTok (@alertiva). Activé UNIQUEMENT quand l'app
+    // TikTok est passée en Live/auditée (TIKTOK_LIVE=1). En sandbox, l'upload n'atterrit
+    // pas sur le vrai compte → on l'évite pour ne pas polluer social_posts. Résilient.
+    if (process.env.TIKTOK_LIVE === "1") {
+      try {
+        const tk = await import("./lib/tiktok.mjs");
+        const token = await tk.ensureAccessToken();
+        const buf = fs.readFileSync(finalOut);
+        const publishId = await tk.postVideoDraft(buf, token);
+        const st = await tk.waitInbox(publishId, token);
+        await tk.recordSocialPost({ mediaUrl: publicUrl, publishId, status: st === "SEND_TO_USER_INBOX" ? "published" : "pending" });
+        console.log(`   → TikTok brouillon : ${st}`);
+      } catch (e) {
+        console.log("   ⚠ TikTok (ignoré) : " + (e.message || e));
+      }
     }
   } else {
     console.log("   ⚠ SUPABASE_SERVICE_ROLE_KEY absente : vidéo gardée en local, pas d'upload.");
