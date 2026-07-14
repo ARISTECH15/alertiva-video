@@ -37,7 +37,13 @@ async function main() {
 
   // Narration : intro + un passage par article + outro (abonne + partage).
   const introText = `Bonjour, voici le journal Alertiva News, l'essentiel de l'actualité de ce ${dateStr}.`;
-  const artTexts = arts.map((a) => `${CAT_FR[a.category_slug] || ""}. ${stripMd(a.title)}. ${sentences(a.summary).slice(0, 2).join(" ") || firstSentence(a.summary)}`);
+  // Narration étoffée par titre (résumé + extrait du contenu) pour un JT de plusieurs minutes.
+  const artTexts = arts.map((a) => {
+    const sum = sentences(a.summary).slice(0, 2);
+    const body = sentences(a.content).filter((s) => !sum.includes(s)).slice(0, 2);
+    const txt = [...sum, ...body].join(" ") || firstSentence(a.summary);
+    return `${CAT_FR[a.category_slug] || ""}. ${stripMd(a.title)}. ${txt}`;
+  });
   const outroText = `Voilà pour ce tour de l'actualité. Abonne-toi et partage cette vidéo pour ne rien manquer, ` +
     `et retrouve tous nos articles sur alertiva news point com. À très vite sur Alertiva News.`;
   const parts = [introText, ...artTexts, outroText];
