@@ -11,24 +11,24 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   ROOT, CAT_FR, die,
-  fetchRecentArticles, stripMd, firstSentence, tts, probeDuration, parseVtt, proportionalSpans,
-  downloadImage, makeMusicBed, renderRemotion, muxFinal, uploadVideo, recordVideo, CAN_UPLOAD,
+  fetchRecentArticles, stripMd, firstSentence, sentences, tts, probeDuration, parseVtt, proportionalSpans,
+  downloadImage, makeMusicBed, renderRemotion, muxFinal, maxrateForSize, uploadVideo, recordVideo, CAN_UPLOAD,
 } from "./lib/alertiva.mjs";
 
-const N = 10;
+const N = 15; // JT complet : ~15 titres pour viser plusieurs minutes
 
 async function main() {
   console.log("🎬 Alertiva — Le JT du soir");
 
-  const rows = await fetchRecentArticles(20);
+  const rows = await fetchRecentArticles(40);
   if (!Array.isArray(rows) || rows.length < 4) return die("Pas assez d'articles avec image.");
 
-  // Variété : au plus 2 par rubrique.
+  // Variété : au plus 3 par rubrique.
   const perCat = {};
   const arts = [];
   for (const a of rows) {
     perCat[a.category_slug] = (perCat[a.category_slug] || 0) + 1;
-    if (perCat[a.category_slug] <= 2) arts.push(a);
+    if (perCat[a.category_slug] <= 3) arts.push(a);
     if (arts.length >= N) break;
   }
   console.log(`   → ${arts.length} titres retenus`);
@@ -37,7 +37,7 @@ async function main() {
 
   // Narration : intro + un passage par article + outro (abonne + partage).
   const introText = `Bonjour, voici le journal Alertiva News, l'essentiel de l'actualité de ce ${dateStr}.`;
-  const artTexts = arts.map((a) => `${CAT_FR[a.category_slug] || ""}. ${stripMd(a.title)}. ${firstSentence(a.summary)}`);
+  const artTexts = arts.map((a) => `${CAT_FR[a.category_slug] || ""}. ${stripMd(a.title)}. ${sentences(a.summary).slice(0, 2).join(" ") || firstSentence(a.summary)}`);
   const outroText = `Voilà pour ce tour de l'actualité. Abonne-toi et partage cette vidéo pour ne rien manquer, ` +
     `et retrouve tous nos articles sur alertiva news point com. À très vite sur Alertiva News.`;
   const parts = [introText, ...artTexts, outroText];
@@ -84,7 +84,7 @@ async function main() {
 
   console.log("   → mixage voix + musique + normalisation…");
   const finalOut = path.join(outDir, "alertiva-jt.mp4");
-  muxFinal(raw, musicAbs, finalOut);
+  muxFinal(raw, musicAbs, finalOut, { maxrateK: maxrateForSize(durationSec) });
   fs.rmSync(raw, { force: true });
 
   const size = (fs.statSync(finalOut).size / 1024 / 1024).toFixed(1);
@@ -97,6 +97,27 @@ async function main() {
     const publicUrl = await uploadVideo(finalOut, storagePath);
     await recordVideo({ articleId: null, kind: "jt", storagePath, publicUrl, durationSec, title: `Le JT — ${dateStr}` });
     console.log(`   → en ligne : ${publicUrl}`);
+
+    // Upload YouTube en format LONG (le JT est prioritaire ; plafond global du jour).
+    if (process.env.YT_ENABLED !== "0") {
+      try {
+        const yt = await import("./lib/youtube.mjs");
+        if ((await yt.youtubeCountToday()) < Number(process.env.YT_TOTAL_CAP || 6)) {
+          const token = await yt.ensureAccessToken();
+          const buf = fs.readFileSync(finalOut);
+          const sommaire = arts.map((a) => "• " + stripMd(a.title)).join("\n");
+          const desc = `Le journal Alertiva News du ${dateStr} — l'essentiel de l'actualité.\n\nAu sommaire :\n${sommaire}\n\n👉 https://alertivanews.com\n\n#actualité #news #journal #info #alertiva`;
+          const id = await yt.uploadVideo(buf, token, {
+            title: `JT Alertiva News — ${dateStr}`.slice(0, 100), description: desc.slice(0, 4900),
+            tags: ["actualité", "news", "journal", "JT", "alertiva"], privacy: "public",
+          });
+          await yt.recordSocialPost({ mediaUrl: publicUrl, videoId: id });
+          console.log(`   → YouTube (long) : https://youtu.be/${id}`);
+        } else {
+          console.log("   → YouTube : quota du jour atteint, skip JT");
+        }
+      } catch (e) { console.log("   ⚠ YouTube (ignoré) : " + (e.message || e)); }
+    }
   } else {
     console.log("   ⚠ SUPABASE_SERVICE_ROLE_KEY absente : JT gardé en local, pas d'upload.");
   }

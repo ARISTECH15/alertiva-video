@@ -13,7 +13,7 @@ concurrency:
 jobs:
   render:
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
 

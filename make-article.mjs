@@ -14,7 +14,7 @@ import {
   ROOT, CAT_FR, die,
   fetchRecentArticles, videoedArticleIds, lastVideoCategories,
   stripMd, sentences, tts, probeDuration, parseVtt, proportionalSpans,
-  downloadImage, makeMusicBed, renderRemotion, muxFinal, uploadVideo, recordVideo, CAN_UPLOAD,
+  downloadImage, makeMusicBed, renderRemotion, muxFinal, maxrateForSize, uploadVideo, recordVideo, CAN_UPLOAD,
 } from "./lib/alertiva.mjs";
 
 const clean = (s) => stripMd(s);
@@ -119,7 +119,7 @@ async function main() {
 
   console.log("   → mixage voix + musique + normalisation…");
   const finalOut = path.join(outDir, `alertiva-article-${chosen.slug}.mp4`);
-  muxFinal(raw, musicAbs, finalOut);
+  muxFinal(raw, musicAbs, finalOut, { maxrateK: maxrateForSize(durationSec) });
   fs.rmSync(raw, { force: true });
 
   const size = (fs.statSync(finalOut).size / 1024 / 1024).toFixed(1);
@@ -132,6 +132,27 @@ async function main() {
     const publicUrl = await uploadVideo(finalOut, storagePath);
     await recordVideo({ articleId: chosen.id, kind: "article", storagePath, publicUrl, durationSec, title: chosen.title });
     console.log(`   → en ligne : ${publicUrl}`);
+
+    // Upload YouTube en Short (vertical court) — plafonné pour respecter le quota API.
+    if (process.env.YT_ENABLED !== "0") {
+      try {
+        const yt = await import("./lib/youtube.mjs");
+        const CAP = Number(process.env.YT_ARTICLE_CAP || 5);
+        if ((await yt.youtubeCountToday()) < CAP) {
+          const token = await yt.ensureAccessToken();
+          const buf = fs.readFileSync(finalOut);
+          const desc = `${clean(chosen.title)}\n\n${clean(chosen.summary).slice(0, 300)}\n\n👉 https://alertivanews.com\n\n#Shorts #actualité #news #info #alertiva`;
+          const id = await yt.uploadVideo(buf, token, {
+            title: `${clean(chosen.title)} #Shorts`.slice(0, 100), description: desc,
+            tags: ["actualité", "news", "info", "alertiva", "shorts"], privacy: "public",
+          });
+          await yt.recordSocialPost({ mediaUrl: publicUrl, videoId: id });
+          console.log(`   → YouTube Short : https://youtu.be/${id}`);
+        } else {
+          console.log("   → YouTube : quota du jour atteint, skip");
+        }
+      } catch (e) { console.log("   ⚠ YouTube (ignoré) : " + (e.message || e)); }
+    }
 
     // Dépôt automatique en brouillon TikTok (@alertiva). Activé UNIQUEMENT quand l'app
     // TikTok est passée en Live/auditée (TIKTOK_LIVE=1). En sandbox, l'upload n'atterrit
