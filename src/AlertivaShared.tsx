@@ -144,12 +144,14 @@ export const Outro: React.FC = () => {
 /** Sous-titres synchronisés, ancrés tout en BAS (jamais sur le titre). */
 export const SubtitleBar: React.FC<{ cues: Cue[]; fps?: number }> = ({ cues, fps = ALERTIVA_FPS }) => {
   const frame = useCurrentFrame();
+  const { width, height } = useVideoConfig();
+  const portrait = height >= width; // vertical (TikTok) vs paysage (YouTube)
   const t = frame / fps;
   const cue = cues.find((c) => t >= c.start && t <= c.end + 0.15);
   if (!cue) return null;
   return (
     <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", zIndex: 8 }}>
-      <div style={{ marginBottom: 232, maxWidth: 940, textAlign: "center", background: "rgba(13,13,20,0.82)",
+      <div style={{ marginBottom: portrait ? 232 : 64, maxWidth: portrait ? 940 : 1400, textAlign: "center", background: "rgba(13,13,20,0.82)",
         borderRadius: 16, padding: "16px 30px", fontFamily: SANS, fontWeight: 700, fontSize: 46, lineHeight: 1.28,
         color: "#fff", boxShadow: "0 6px 30px rgba(0,0,0,0.45)" }}>
         {cue.text}

@@ -50,6 +50,16 @@ export const RemotionRoot: React.FC = () => {
         defaultProps={defaultJTProps}
         calculateMetadata={({ props }) => metaFrom(props, "work-jt/props.json", JT_FPS)}
       />
+      {/* JT paysage 16:9 pour YouTube (format long). Même composant, responsive. */}
+      <Composition
+        id="AlertivaJTWide"
+        component={AlertivaJT}
+        width={1920}
+        height={1080}
+        fps={JT_FPS}
+        defaultProps={defaultJTProps}
+        calculateMetadata={({ props }) => metaFrom(props, "work-jt/props.json", JT_FPS)}
+      />
     </>
   );
 };

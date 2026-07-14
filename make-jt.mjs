@@ -82,43 +82,55 @@ async function main() {
   const musicAbs = path.join(workDir, "music.m4a");
   makeMusicBed(durationSec, musicAbs);
 
-  console.log(`   → rendu Remotion (${Math.round(durationSec)}s)…`);
   const outDir = path.join(ROOT, "out");
   fs.mkdirSync(outDir, { recursive: true });
-  const raw = path.join(outDir, "alertiva-jt-raw.mp4");
-  renderRemotion("AlertivaJT", path.join(workDir, "props.json"), raw);
+  const propsPath = path.join(workDir, "props.json");
+  const mr = maxrateForSize(durationSec);
 
-  console.log("   → mixage voix + musique + normalisation…");
-  const finalOut = path.join(outDir, "alertiva-jt.mp4");
-  muxFinal(raw, musicAbs, finalOut, { maxrateK: maxrateForSize(durationSec) });
-  fs.rmSync(raw, { force: true });
+  // Rend une composition Remotion puis mixe voix + musique + normalise.
+  const renderOne = (compId, outName) => {
+    const raw = path.join(outDir, `raw-${outName}`);
+    renderRemotion(compId, propsPath, raw);
+    const out = path.join(outDir, outName);
+    muxFinal(raw, musicAbs, out, { maxrateK: mr });
+    fs.rmSync(raw, { force: true });
+    return out;
+  };
 
-  const size = (fs.statSync(finalOut).size / 1024 / 1024).toFixed(1);
-  console.log(`✅ JT prêt : out/alertiva-jt.mp4 (${size} Mo, ${Math.round(durationSec)}s, 1080×1920)`);
+  console.log(`   → rendu JT vertical 9:16 (TikTok/Studio) ${Math.round(durationSec)}s…`);
+  const finalVertical = renderOne("AlertivaJT", "alertiva-jt.mp4");
+  console.log("   → rendu JT paysage 16:9 (YouTube)…");
+  const finalWide = renderOne("AlertivaJTWide", "alertiva-jt-wide.mp4");
+  const mo = (p) => (fs.statSync(p).size / 1024 / 1024).toFixed(1);
+  console.log(`✅ JT prêts : vertical ${mo(finalVertical)} Mo · paysage ${mo(finalWide)} Mo (${Math.round(durationSec)}s)`);
 
   if (CAN_UPLOAD) {
-    console.log("   → upload Supabase Storage…");
     const day = new Date().toISOString().slice(0, 10);
-    const storagePath = `jt/${day}.mp4`;
-    const publicUrl = await uploadVideo(finalOut, storagePath);
-    await recordVideo({ articleId: null, kind: "jt", storagePath, publicUrl, durationSec, title: `Le JT — ${dateStr}` });
-    console.log(`   → en ligne : ${publicUrl}`);
 
-    // Upload YouTube en format LONG (le JT est prioritaire ; plafond global du jour).
+    // Vertical (9:16) → Supabase (Studio + TikTok à publier à la main)
+    const urlV = await uploadVideo(finalVertical, `jt/${day}.mp4`);
+    await recordVideo({ articleId: null, kind: "jt", storagePath: `jt/${day}.mp4`, publicUrl: urlV, durationSec, title: `Le JT — ${dateStr}` });
+    console.log(`   → JT vertical en ligne : ${urlV}`);
+
+    // Paysage (16:9) → Supabase + YouTube (format long)
+    const urlW = await uploadVideo(finalWide, `jt-yt/${day}.mp4`);
+    await recordVideo({ articleId: null, kind: "jt_yt", storagePath: `jt-yt/${day}.mp4`, publicUrl: urlW, durationSec, title: `Le JT (YouTube) — ${dateStr}` });
+    console.log(`   → JT paysage en ligne : ${urlW}`);
+
     if (process.env.YT_ENABLED !== "0") {
       try {
         const yt = await import("./lib/youtube.mjs");
         if ((await yt.youtubeCountToday()) < Number(process.env.YT_TOTAL_CAP || 6)) {
           const token = await yt.ensureAccessToken();
-          const buf = fs.readFileSync(finalOut);
+          const buf = fs.readFileSync(finalWide);
           const sommaire = arts.map((a) => "• " + stripMd(a.title)).join("\n");
-          const desc = `Le journal Alertiva News du ${dateStr} — l'essentiel de l'actualité.\n\nAu sommaire :\n${sommaire}\n\n👉 https://alertivanews.com\n\n#actualité #news #journal #info #alertiva`;
+          const desc = `Le journal Alertiva News du ${dateStr} — l'essentiel de l'actualité en quelques minutes.\n\nAu sommaire :\n${sommaire}\n\n👉 https://alertivanews.com\n\n#actualité #news #journal #info #alertiva`;
           const id = await yt.uploadVideo(buf, token, {
             title: `JT Alertiva News — ${dateStr}`.slice(0, 100), description: desc.slice(0, 4900),
             tags: ["actualité", "news", "journal", "JT", "alertiva"], privacy: "public",
           });
-          await yt.recordSocialPost({ mediaUrl: publicUrl, videoId: id });
-          console.log(`   → YouTube (long) : https://youtu.be/${id}`);
+          await yt.recordSocialPost({ mediaUrl: urlW, videoId: id });
+          console.log(`   → YouTube (long, paysage) : https://youtu.be/${id}`);
         } else {
           console.log("   → YouTube : quota du jour atteint, skip JT");
         }
