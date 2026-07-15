@@ -14,7 +14,7 @@ import {
   ROOT, CAT_FR, die,
   fetchRecentArticles, videoedArticleIds, lastVideoCategories,
   stripMd, sentences, tts, probeDuration, parseVtt, proportionalSpans,
-  downloadImage, makeMusicBed, renderRemotion, muxFinal, maxrateForSize, uploadVideo, recordVideo, CAN_UPLOAD,
+  downloadImage, makeMusicBed, renderRemotion, muxFinal, maxrateForSize, uploadVideo, recordVideo, updateArticleCover, CAN_UPLOAD,
 } from "./lib/alertiva.mjs";
 
 const clean = (s) => stripMd(s);
@@ -87,9 +87,19 @@ async function main() {
 
   const cues = parseVtt(vttAbs);
 
-  // Image nette du sujet.
+  // Image du sujet : illustration IA (plus fidèle au titre) si une clé est configurée,
+  // sinon la couverture existante (banque d'images). Met aussi à jour la couverture de l'article.
   const imgRel = "work-article/img.jpg";
-  const okImg = await downloadImage(chosen.cover_image, path.join(ROOT, "public", imgRel));
+  let coverUrl = chosen.cover_image;
+  try {
+    const ai = await import("./lib/aiImage.mjs");
+    if (await ai.haveImageKey()) {
+      coverUrl = await ai.generateImage(`${clean(chosen.title)} — actualité ${cat.toLowerCase()}`);
+      await updateArticleCover(chosen.id, coverUrl);
+      console.log("   → image IA générée : " + coverUrl);
+    }
+  } catch (e) { console.log("   ⚠ image IA (repli banque) : " + (e.message || e)); }
+  const okImg = await downloadImage(coverUrl, path.join(ROOT, "public", imgRel));
 
   // Timeline proportionnelle au texte.
   const spans = proportionalSpans(parts, durationSec);
