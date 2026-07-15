@@ -154,6 +154,16 @@ async function main() {
       } catch (e) { console.log("   ⚠ YouTube (ignoré) : " + (e.message || e)); }
     }
 
+    // Publication auto Facebook + Instagram (Reels) — résilient, chaque réseau indépendant.
+    if (process.env.META_ENABLED !== "0") {
+      try {
+        const meta = await import("./lib/facebook.mjs");
+        const cap = `${clean(chosen.title)}\n\n👉 https://alertivanews.com\n\n#actualité #news #info #alertiva`;
+        const r = await meta.publishToMeta(publicUrl, cap, { fb: true, ig: true });
+        console.log("   → Meta :", JSON.stringify(r));
+      } catch (e) { console.log("   ⚠ Meta (ignoré) : " + (e.message || e)); }
+    }
+
     // Dépôt automatique en brouillon TikTok (@alertiva). Activé UNIQUEMENT quand l'app
     // TikTok est passée en Live/auditée (TIKTOK_LIVE=1). En sandbox, l'upload n'atterrit
     // pas sur le vrai compte → on l'évite pour ne pas polluer social_posts. Résilient.

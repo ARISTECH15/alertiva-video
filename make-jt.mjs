@@ -136,6 +136,16 @@ async function main() {
         }
       } catch (e) { console.log("   ⚠ YouTube (ignoré) : " + (e.message || e)); }
     }
+
+    // Instagram Reel du JT (vertical, ≤ 15 min OK sur IG). Pas de Reel Facebook (limité à ~90 s).
+    if (process.env.META_ENABLED !== "0") {
+      try {
+        const meta = await import("./lib/facebook.mjs");
+        const cap = `Le JT Alertiva News du ${dateStr} — l'essentiel de l'actualité.\n\n👉 https://alertivanews.com\n\n#actualité #news #JT #alertiva`;
+        const r = await meta.publishToMeta(urlV, cap, { fb: false, ig: true });
+        console.log("   → Meta (JT) :", JSON.stringify(r));
+      } catch (e) { console.log("   ⚠ Meta JT (ignoré) : " + (e.message || e)); }
+    }
   } else {
     console.log("   ⚠ SUPABASE_SERVICE_ROLE_KEY absente : JT gardé en local, pas d'upload.");
   }
