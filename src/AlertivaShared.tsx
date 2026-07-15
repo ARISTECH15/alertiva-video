@@ -28,18 +28,22 @@ export const TopBar: React.FC<{ date?: string }> = ({ date }) => (
  * et TITRE dans la zone haute. Le bas reste dégagé pour les sous-titres.
  */
 export const NewsSlide: React.FC<{
-  image?: string; title?: string; category?: string; index?: number; durationFrames: number;
-}> = ({ image, title, category, index = 0, durationFrames }) => {
+  image?: string; images?: string[]; title?: string; category?: string; index?: number; durationFrames: number;
+}> = ({ image, images, title, category, index = 0, durationFrames }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const zoomIn = index % 2 === 0;
-  const scale = interpolate(frame, [0, durationFrames], zoomIn ? [1.06, 1.18] : [1.18, 1.06], { extrapolateRight: "clamp" });
+  const list = images && images.length ? images : image ? [image] : [];
+  const per = list.length ? durationFrames / list.length : durationFrames;
   const appear = spring({ frame, fps, config: { damping: 16 } });
   return (
     <AbsoluteFill style={{ background: DARK, overflow: "hidden" }}>
-      {image && (
-        <Img src={resolveSrc(image)} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale})` }} />
-      )}
+      {list.map((img, k) => {
+        const start = k * per;
+        const zoomIn = (k + index) % 2 === 0;
+        const scale = interpolate(frame, [start, start + per], zoomIn ? [1.06, 1.2] : [1.2, 1.06], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+        const opacity = list.length === 1 ? 1 : interpolate(frame, [start - 10, start + 10, start + per - 10, start + per + 10], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+        return <Img key={k} src={resolveSrc(img)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity, transform: `scale(${scale})` }} />;
+      })}
       {/* Voile : sombre en haut (lisibilité titre) + sombre en bas (lisibilité sous-titres) */}
       <AbsoluteFill style={{ background:
         "linear-gradient(180deg, rgba(13,13,20,0.88) 0%, rgba(13,13,20,0.45) 24%, transparent 44%, transparent 60%, rgba(13,13,20,0.55) 100%)" }} />

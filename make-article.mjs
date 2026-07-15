@@ -87,19 +87,28 @@ async function main() {
 
   const cues = parseVtt(vttAbs);
 
-  // Image du sujet : illustration IA (plus fidèle au titre) si une clé est configurée,
-  // sinon la couverture existante (banque d'images). Met aussi à jour la couverture de l'article.
-  const imgRel = "work-article/img.jpg";
-  let coverUrl = chosen.cover_image;
+  // Images du sujet : plusieurs illustrations IA (angles variés) si une clé est configurée,
+  // sinon la couverture existante. La 1re devient aussi la couverture de l'article sur le site.
+  const images = [];
   try {
     const ai = await import("./lib/aiImage.mjs");
     if (await ai.haveImageKey()) {
-      coverUrl = await ai.generateImage(`${clean(chosen.title)} — actualité ${cat.toLowerCase()}`);
-      await updateArticleCover(chosen.id, coverUrl);
-      console.log("   → image IA générée : " + coverUrl);
+      const n = Number(process.env.AI_IMAGES_PER_ARTICLE || 3);
+      const urls = await ai.generateImages(`${clean(chosen.title)} — actualité ${cat.toLowerCase()}`, n);
+      if (urls.length) {
+        await updateArticleCover(chosen.id, urls[0]);
+        for (let i = 0; i < urls.length; i++) {
+          const rel = `work-article/img-${i}.jpg`;
+          if (await downloadImage(urls[i], path.join(ROOT, "public", rel))) images.push(rel);
+        }
+        console.log(`   → ${images.length} images IA générées`);
+      }
     }
-  } catch (e) { console.log("   ⚠ image IA (repli banque) : " + (e.message || e)); }
-  const okImg = await downloadImage(coverUrl, path.join(ROOT, "public", imgRel));
+  } catch (e) { console.log("   ⚠ images IA (repli banque) : " + (e.message || e)); }
+  if (!images.length) {
+    const rel = "work-article/img.jpg";
+    if (await downloadImage(chosen.cover_image, path.join(ROOT, "public", rel))) images.push(rel);
+  }
 
   // Timeline proportionnelle au texte.
   const spans = proportionalSpans(parts, durationSec);
@@ -107,7 +116,7 @@ async function main() {
   const kinds = recap ? ["intro", "article", "headlines", "outro"] : ["intro", "article", "outro"];
   spans.forEach((sp, i) => {
     const type = kinds[i];
-    if (type === "article") segments.push({ type, image: okImg ? imgRel : undefined, title: clean(chosen.title), category: cat, ...sp });
+    if (type === "article") segments.push({ type, images, title: clean(chosen.title), category: cat, ...sp });
     else if (type === "headlines") segments.push({ type, heading: "Aussi à la une", items: heads, ...sp });
     else segments.push({ type, ...sp });
   });
