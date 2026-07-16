@@ -100,7 +100,7 @@ export const Intro: React.FC<{ brandSub: string; date?: string }> = ({ brandSub,
     <AbsoluteFill style={{ background: DARK, justifyContent: "center", alignItems: "center" }}>
       <div style={{ position: "absolute", width: 1300, height: 1300, borderRadius: "50%",
         background: `radial-gradient(circle, ${ALERT}22, transparent 65%)` }} />
-      <div style={{ transform: `scale(${s})`, textAlign: "center", padding: "0 40px" }}>
+      <div style={{ transform: `scale(${0.82 + 0.18 * s})`, textAlign: "center", padding: "0 40px" }}>
         <div style={{ fontFamily: SERIF, fontSize: 118, fontWeight: 900, color: "#fff", letterSpacing: 4, lineHeight: 1.05 }}>
           ALERTIVA<span style={{ color: ALERT }}>NEWS</span>
         </div>
