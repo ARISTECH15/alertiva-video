@@ -45,8 +45,12 @@ async function main() {
   });
 
   // Un SEUL appel pour tout le journal : un par sujet ferait sauter le quota.
+  // ~55 mots par sujet ≈ 22 s : 15 sujets donnent un journal d'environ 5 min 30.
+  // Sans cette consigne chiffrée, le modèle rend des brèves de 15 mots et le JT
+  // tombe à 95 secondes (constaté le 19/07).
+  const MOTS_PAR_SUJET = Number(process.env.JT_MOTS_PAR_SUJET || 55);
   console.log("   → réécriture parlée du journal (accroche + question finale)…");
-  const humanises = await humaniserJT(sujets);
+  const humanises = await humaniserJT(sujets, { motsParSujet: MOTS_PAR_SUJET });
   // Repli : on garde au moins la suppression du générique et des rubriques.
   const parts = humanises || sujets.map((s, i) =>
     i === sujets.length - 1
