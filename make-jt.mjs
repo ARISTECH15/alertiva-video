@@ -10,9 +10,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  ROOT, CAT_FR, die,
+  ROOT, die,
   fetchRecentArticles, stripMd, firstSentence, sentences, tts, probeDuration, parseVtt, proportionalSpans,
-  downloadImage, makeMusicBed, renderRemotion, muxFinal, maxrateForSize, uploadVideo, recordVideo, CAN_UPLOAD,
+  humaniserJT, makeMusicTrack, prependSilence, shiftCues, LEAD_SEC,
+  downloadImage, renderRemotion, muxFinal, maxrateForSize, uploadVideo, recordVideo, CAN_UPLOAD,
 } from "./lib/alertiva.mjs";
 
 const N = 15; // JT complet : ~15 titres pour viser plusieurs minutes
@@ -35,18 +36,22 @@ async function main() {
 
   const dateStr = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 
-  // Narration : intro + un passage par article + outro (abonne + partage).
-  const introText = `Bonjour, voici le journal Alertiva News, l'essentiel de l'actualité de ce ${dateStr}.`;
-  // Narration étoffée par titre (résumé + extrait du contenu) pour un JT de plusieurs minutes.
-  const artTexts = arts.map((a) => {
+  // Matière brute par sujet — sans rubrique annoncée ni titre lu à voix haute.
+  const sujets = arts.map((a) => {
     const sum = sentences(a.summary).slice(0, 2);
     const body = sentences(a.content).filter((s) => !sum.includes(s)).slice(0, 2);
-    const txt = [...sum, ...body].join(" ") || firstSentence(a.summary);
-    return `${CAT_FR[a.category_slug] || ""}. ${stripMd(a.title)}. ${txt}`;
+    return `${stripMd(a.title)}. ${[...sum, ...body].join(" ") || firstSentence(a.summary)}`;
   });
-  const outroText = `Voilà pour ce tour de l'actualité. Abonne-toi et partage cette vidéo pour ne rien manquer, ` +
-    `et retrouve tous nos articles sur alertiva news point com. À très vite sur Alertiva News.`;
-  const parts = [introText, ...artTexts, outroText];
+
+  // Un SEUL appel pour tout le journal : un par sujet ferait sauter le quota.
+  console.log("   → réécriture parlée du journal (accroche + question finale)…");
+  const humanises = await humaniserJT(sujets);
+  // Repli : on garde au moins la suppression du générique et des rubriques.
+  const parts = humanises || sujets.map((s, i) =>
+    i === sujets.length - 1
+      ? `${s} Et vous, qu'est-ce qui vous marque le plus dans l'actualité du jour ? Dites-le en commentaire.`
+      : s);
+  console.log(humanises ? `     ${parts.length} passages réécrits` : "     ⚠ IA indisponible → texte de repli");
 
   const workDir = path.join(ROOT, "public", "work-jt");
   fs.mkdirSync(workDir, { recursive: true });
@@ -56,31 +61,37 @@ async function main() {
 
   console.log("   → voix off edge-tts…");
   tts(parts.join("\n\n"), mp3Abs, vttAbs);
-  const durationSec = probeDuration(mp3Abs) + 0.4;
-  const cues = parseVtt(vttAbs);
-  console.log(`   → durée voix : ${durationSec.toFixed(1)}s`);
+  // Silence d'ouverture pour laisser jouer le jingle avant le premier mot.
+  const durationSec = prependSilence(mp3Abs, LEAD_SEC) + 0.4;
+  const cues = shiftCues(parseVtt(vttAbs), LEAD_SEC);
+  console.log(`   → durée : ${durationSec.toFixed(1)}s (dont ${LEAD_SEC}s de jingle)`);
 
-  // Timeline + téléchargement des visuels.
-  const spans = proportionalSpans(parts, durationSec);
+  // Timeline : les passages se répartissent APRÈS le jingle ; le premier visuel
+  // démarre à 0 pour le couvrir. Plus de carte de générique.
+  const spansNarration = proportionalSpans(parts, durationSec - LEAD_SEC);
+  const spans = spansNarration.map((s) => ({ from: s.from + LEAD_SEC, to: s.to + LEAD_SEC }));
+  const outroSec = Math.min(3, durationSec * 0.04);
+
   const segments = [];
+  const transitions = []; // instants des jingles de transition
   for (let i = 0; i < parts.length; i++) {
-    const sp = spans[i];
-    if (i === 0) segments.push({ type: "intro", ...sp });
-    else if (i === parts.length - 1) segments.push({ type: "outro", ...sp });
-    else {
-      const a = arts[i - 1];
-      const imgRel = `work-jt/img-${i}.jpg`;
-      const ok = await downloadImage(a.cover_image, path.join(ROOT, "public", imgRel));
-      segments.push({ type: "article", image: ok ? imgRel : undefined, title: stripMd(a.title), category: CAT_FR[a.category_slug] || a.category_slug, ...sp });
-    }
+    const a = arts[i];
+    const from = i === 0 ? 0 : spans[i].from;
+    const to = i === parts.length - 1 ? Math.max(from + 0.1, durationSec - outroSec) : spans[i].to;
+    if (i > 0) transitions.push(spans[i].from - 0.6); // jingle juste avant le sujet suivant
+    const imgRel = `work-jt/img-${i}.jpg`;
+    const ok = a ? await downloadImage(a.cover_image, path.join(ROOT, "public", imgRel)) : false;
+    // Pas de badge rubrique : on n'annonce plus « sport / monde / insolite ».
+    segments.push({ type: "article", image: ok ? imgRel : undefined, title: stripMd(a?.title || ""), from, to });
   }
+  segments.push({ type: "outro", from: Math.max(0.1, durationSec - outroSec), to: durationSec });
 
   const props = { durationSec, audioFile: mp3Rel, date: dateStr, segments, cues };
   fs.writeFileSync(path.join(workDir, "props.json"), JSON.stringify(props, null, 2));
 
-  console.log("   → musique de fond…");
+  console.log(`   → jingle d'ouverture + ${transitions.length} transitions…`);
   const musicAbs = path.join(workDir, "music.m4a");
-  makeMusicBed(durationSec, musicAbs);
+  makeMusicTrack(durationSec, [0, ...transitions], musicAbs);
 
   const outDir = path.join(ROOT, "out");
   fs.mkdirSync(outDir, { recursive: true });
@@ -92,7 +103,7 @@ async function main() {
     const raw = path.join(outDir, `raw-${outName}`);
     renderRemotion(compId, propsPath, raw);
     const out = path.join(outDir, outName);
-    muxFinal(raw, musicAbs, out, { maxrateK: mr });
+    muxFinal(raw, musicAbs, out, { maxrateK: mr, leadSec: LEAD_SEC });
     fs.rmSync(raw, { force: true });
     return out;
   };

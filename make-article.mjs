@@ -13,12 +13,15 @@ import path from "node:path";
 import {
   ROOT, CAT_FR, die,
   fetchRecentArticles, videoedArticleIds, lastVideoCategories,
-  stripMd, sentences, tts, probeDuration, parseVtt, proportionalSpans,
-  downloadImage, makeMusicBed, renderRemotion, muxFinal, maxrateForSize, uploadVideo, recordVideo, updateArticleCover, CAN_UPLOAD,
+  stripMd, sentences, tts, probeDuration, parseVtt,
+  humaniser, makeMusicTrack, prependSilence, shiftCues, LEAD_SEC,
+  downloadImage, renderRemotion, muxFinal, maxrateForSize, uploadVideo, recordVideo, updateArticleCover, CAN_UPLOAD,
 } from "./lib/alertiva.mjs";
 
 const clean = (s) => stripMd(s);
-const MIN_SEC = 62; // marge de sécurité au-dessus de la minute
+// Durée visée de la narration. On ne rallonge plus artificiellement le texte :
+// le remplissage était l'exact contraire d'une narration humaine.
+const TARGET_SEC = Number(process.env.ARTICLE_TARGET_SEC || 55);
 
 async function main() {
   console.log("🎬 Alertiva — vidéo par article");
@@ -56,13 +59,12 @@ async function main() {
     if (!heads.includes(t)) heads.push(t);
   }
 
-  // Narration.
+  // Narration. Plus de générique « Alertiva News. [rubrique]. » ni de titre annoncé :
+  // l'accroche doit porter la conséquence dès la première seconde, sinon la
+  // complétion s'effondre — et c'est la complétion qui décide de la distribution.
   const sumSents = sentences(chosen.summary);
   const contentSents = sentences(chosen.content).filter((s) => !sumSents.includes(s));
-  const intro = `Alertiva News. ${cat}.`;
-  const body = [clean(chosen.title) + ".", ...sumSents, ...contentSents.slice(0, 2)].join(" ");
-  const recap = heads.length ? `Également à la une aujourd'hui. ${heads.join(". ")}.` : "";
-  const buildParts = (outro) => (recap ? [intro, body, recap, outro] : [intro, body, outro]);
+  const matiere = [clean(chosen.title), ...sumSents, ...contentSents.slice(0, 4)].join(" ");
 
   const workDir = path.join(ROOT, "public", "work-article");
   fs.mkdirSync(workDir, { recursive: true });
@@ -70,22 +72,22 @@ async function main() {
   const mp3Abs = path.join(ROOT, "public", mp3Rel);
   const vttAbs = path.join(workDir, "voice.vtt");
 
-  // Voix + garantie de durée > 1 min.
-  let outro = `Abonne-toi à Alertiva News et partage cette vidéo pour rester informé. Retrouve toute l'actualité sur alertiva news point com.`;
-  let parts = buildParts(outro);
-  console.log("   → voix off edge-tts…");
-  tts(parts.join("\n\n"), mp3Abs, vttAbs);
-  let durationSec = probeDuration(mp3Abs);
-  if (durationSec < MIN_SEC) {
-    outro += " Restez avec nous, l'information continue en direct sur Alertiva News, votre rendez-vous quotidien.";
-    parts = buildParts(outro);
-    tts(parts.join("\n\n"), mp3Abs, vttAbs);
-    durationSec = probeDuration(mp3Abs);
-  }
-  durationSec += 0.5;
-  console.log(`   → durée voix : ${durationSec.toFixed(1)}s`);
+  console.log("   → réécriture parlée (accroche + question finale)…");
+  const humanise = await humaniser(matiere, { secondes: TARGET_SEC, question: true });
+  // Repli sans IA : au moins on retire le générique et le titre annoncé.
+  const secours = [...sumSents, ...contentSents.slice(0, 3)].join(" ") +
+    ` Et vous, qu'est-ce que vous en pensez ? Dites-le en commentaire, et retrouvez toute l'actualité sur alertiva news point com.`;
+  const narration = humanise || secours;
+  console.log(humanise ? "     accroche IA obtenue" : "     ⚠ IA indisponible → texte de repli");
 
-  const cues = parseVtt(vttAbs);
+  console.log("   → voix off edge-tts…");
+  tts(narration, mp3Abs, vttAbs);
+  // Silence d'ouverture : le jingle doit s'entendre avant le premier mot.
+  let durationSec = prependSilence(mp3Abs, LEAD_SEC) + 0.4;
+  console.log(`   → durée : ${durationSec.toFixed(1)}s (dont ${LEAD_SEC}s de jingle)`);
+
+  const cues = shiftCues(parseVtt(vttAbs), LEAD_SEC);
+  const parts = [narration];
 
   // Images du sujet : plusieurs illustrations IA (angles variés) si une clé est configurée,
   // sinon la couverture existante. La 1re devient aussi la couverture de l'article sur le site.
@@ -110,25 +112,22 @@ async function main() {
     if (await downloadImage(chosen.cover_image, path.join(ROOT, "public", rel))) images.push(rel);
   }
 
-  // Timeline proportionnelle au texte.
-  const spans = proportionalSpans(parts, durationSec);
-  const segments = [];
-  const kinds = recap ? ["intro", "article", "headlines", "outro"] : ["intro", "article", "outro"];
-  spans.forEach((sp, i) => {
-    const type = kinds[i];
-    if (type === "article") segments.push({ type, images, title: clean(chosen.title), category: cat, ...sp });
-    else if (type === "headlines") segments.push({ type, heading: "Aussi à la une", items: heads, ...sp });
-    else segments.push({ type, ...sp });
-  });
+  // Timeline. L'image démarre à 0 : elle couvre le jingle d'ouverture, il n'y a
+  // plus de carte de générique. Pas de badge rubrique non plus.
+  const outroSec = Math.min(2.6, durationSec * 0.09);
+  const segments = [
+    { type: "article", images, title: clean(chosen.title), from: 0, to: Math.max(0.1, durationSec - outroSec) },
+    { type: "outro", from: Math.max(0.1, durationSec - outroSec), to: durationSec },
+  ];
 
   const dateStr = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
-  const props = { durationSec, audioFile: mp3Rel, date: dateStr, category: cat, segments, cues };
+  const props = { durationSec, audioFile: mp3Rel, date: dateStr, category: "", segments, cues };
   fs.writeFileSync(path.join(workDir, "props.json"), JSON.stringify(props, null, 2));
 
-  // Musique + rendu + mixage.
-  console.log("   → musique de fond…");
+  // Musique : jingle d'ouverture puis nappe de fond.
+  console.log("   → jingle + musique de fond…");
   const musicAbs = path.join(workDir, "music.m4a");
-  makeMusicBed(durationSec, musicAbs);
+  makeMusicTrack(durationSec, [0], musicAbs);
 
   console.log(`   → rendu Remotion (${Math.round(durationSec)}s)…`);
   const outDir = path.join(ROOT, "out");
@@ -138,7 +137,7 @@ async function main() {
 
   console.log("   → mixage voix + musique + normalisation…");
   const finalOut = path.join(outDir, `alertiva-article-${chosen.slug}.mp4`);
-  muxFinal(raw, musicAbs, finalOut, { maxrateK: maxrateForSize(durationSec) });
+  muxFinal(raw, musicAbs, finalOut, { maxrateK: maxrateForSize(durationSec), leadSec: LEAD_SEC });
   fs.rmSync(raw, { force: true });
 
   const size = (fs.statSync(finalOut).size / 1024 / 1024).toFixed(1);
@@ -160,9 +159,12 @@ async function main() {
         if ((await yt.youtubeCountToday()) < CAP) {
           const token = await yt.ensureAccessToken();
           const buf = fs.readFileSync(finalOut);
-          const desc = `${clean(chosen.title)}\n\n${clean(chosen.summary).slice(0, 300)}\n\n👉 https://alertivanews.com\n\n#Shorts #actualité #news #info #alertiva`;
+          // Lien PROFOND vers l'article : YouTube est le seul réseau où le lien
+          // est cliquable, autant envoyer sur le sujet que la personne vient de voir.
+          const lien = `https://alertivanews.com/article/${chosen.slug}`;
+          const desc = `${clean(chosen.summary).slice(0, 300)}\n\n👉 L'article complet : ${lien}\n\nToute l'actu : https://alertivanews.com\n\n#actualité #news #info #alertiva`;
           const id = await yt.uploadVideo(buf, token, {
-            title: `${clean(chosen.title)} #Shorts`.slice(0, 100), description: desc,
+            title: clean(chosen.title).slice(0, 100), description: desc,
             tags: ["actualité", "news", "info", "alertiva", "shorts"], privacy: "public",
           });
           await yt.recordSocialPost({ mediaUrl: publicUrl, videoId: id });
@@ -177,7 +179,11 @@ async function main() {
     if (process.env.META_ENABLED !== "0") {
       try {
         const meta = await import("./lib/facebook.mjs");
-        const cap = `${clean(chosen.title)}\n\n👉 https://alertivanews.com\n\n#actualité #news #info #alertiva`;
+        // Instagram ne rend pas les URL cliquables en légende : on renvoie vers le
+        // lien en bio, et on donne l'adresse en clair pour Facebook, où elle l'est.
+        const cap = `${clean(chosen.title)}\n\n${clean(chosen.summary).slice(0, 200)}\n\n` +
+          `🔗 L'article complet : alertivanews.com/article/${chosen.slug}\n(lien en bio)\n\n` +
+          `#actualité #news #info #alertiva`;
         const r = await meta.publishToMeta(publicUrl, cap, { fb: true, ig: true });
         console.log("   → Meta :", JSON.stringify(r));
       } catch (e) { console.log("   ⚠ Meta (ignoré) : " + (e.message || e)); }
