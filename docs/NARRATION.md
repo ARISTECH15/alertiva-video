@@ -7,6 +7,27 @@ Pourquoi c'est le pivot : les plateformes (TikTok en tête) pénalisent la voix 
 sur template et récompensent explicitement « ajouter vos propres voix off ». C'est le seul
 levier qui transforme une vue en abonné — et le seul qui peut débrider le compte.
 
+## 0. Écrire le script (dans l'admin, avant d'enregistrer)
+
+`/admin` → **🎙️ Ma narration** → étape 1.
+
+Deux entrées possibles : **choisir un article publié** dans la liste déroulante, ou
+**coller un texte** brut. Champ « angle » optionnel pour orienter l'IA
+(ex. « insiste sur l'impact sur le pouvoir d'achat »). Puis **✍️ Générer le script à lire**.
+
+L'IA (Groq, déjà configurée) est contrainte par le diagnostic réseaux :
+- **accroche = la conséquence** dans les 2 premières secondes, jamais le contexte
+  (« Aujourd'hui, l'Assemblée a annoncé… » est explicitement interdit) ;
+- **110-140 mots** = 45-55 s — au-delà, la complétion s'effondre ;
+- **français parlé**, phrases de 12 mots max, sans tournure de presse écrite ;
+- **la source nommée à l'oral** (crédibilité + éligibilité For You) ;
+- aucun emoji ni hashtag : c'est du texte à DIRE.
+
+Le compteur affiche mots + durée estimée (rouge au-delà de 60 s). Le titre écran est
+pré-rempli avec la conséquence. **Le script est éditable** — retouche-le : un mot qui ne te
+ressemble pas s'entend. Bouton **📖 Lire en grand** = téléprompteur plein écran pour
+l'enregistrement.
+
 ## 1. Enregistrer (gratuit, chez toi)
 
 | Besoin | Outil |
