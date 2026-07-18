@@ -1,9 +1,15 @@
 name: Alertiva — Le JT du soir
 
-# Récap vidéo de toute l'actu du jour, chaque soir (Paris 22h00 = UTC 20h00 l'été).
+# Récap vidéo de toute l'actu du jour, chaque soir à 20h00 HEURE DE PARIS.
+#
+# GitHub planifie en UTC et ignore le changement d'heure : un seul cron donnerait
+# 20h l'été puis 19h l'hiver. On déclenche donc aux DEUX heures possibles
+# (18h UTC = 20h à Paris l'été, 19h UTC = 20h à Paris l'hiver) et un premier job
+# ne laisse passer que celle qui correspond réellement à 20h à Paris.
 on:
   schedule:
-    - cron: "0 20 * * *"
+    - cron: "0 18 * * *"
+    - cron: "0 19 * * *"
   workflow_dispatch: {}
 
 concurrency:
@@ -11,7 +17,30 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Portier : quelques secondes, évite de lancer un rendu de 90 min pour rien.
+  heure:
+    runs-on: ubuntu-22.04
+    outputs:
+      go: ${{ steps.paris.outputs.go }}
+    steps:
+      - id: paris
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "Lancement manuel — on rend le JT."
+            echo "go=oui" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          H=$(TZ=Europe/Paris date +%H)
+          if [ "$H" = "20" ]; then
+            echo "Il est 20h à Paris — c'est l'heure du JT."
+            echo "go=oui" >> "$GITHUB_OUTPUT"
+          else
+            echo "Il est ${H}h à Paris — ce n'est pas l'heure, on s'arrête (heure d'été/hiver)."
+            echo "go=non" >> "$GITHUB_OUTPUT"
+          fi
+
   render:
+    needs: heure
+    if: needs.heure.outputs.go == 'oui'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
