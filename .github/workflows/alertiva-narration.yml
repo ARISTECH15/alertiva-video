@@ -1,0 +1,64 @@
+name: Alertiva — Vidéo depuis ma narration
+
+# Déclenché par l'admin du site (repository_dispatch) après upload du MP3 + médias.
+# Rendu 100% en ligne : le PC de Farid reste éteint.
+on:
+  repository_dispatch:
+    types: [narration]
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "ID du job narration (vide = le plus ancien en attente)"
+        required: false
+        type: string
+
+concurrency:
+  group: alertiva-narration
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Le modèle Whisper pèse quelques centaines de Mo : on le garde en cache
+      # entre deux exécutions, sinon chaque rendu le retélécharge.
+      - name: Cache du modèle Whisper
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: whisper-${{ vars.WHISPER_MODEL || 'small' }}
+
+      - name: Transcription (faster-whisper, gratuit et local)
+        run: python -m pip install --upgrade faster-whisper
+
+      - name: Dépendances système (ffmpeg + libs Chrome headless)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libnss3 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 \
+            libcups2 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libxkbcommon0 \
+            libpango-1.0-0 libcairo2 libasound2 fonts-liberation
+
+      - name: Installer les dépendances Node
+        run: npm ci
+
+      - name: Préparer le navigateur de rendu (Remotion)
+        run: npx remotion browser ensure
+
+      - name: Monter la vidéo à partir de la narration
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NARRATION_JOB_ID: ${{ github.event.client_payload.job_id || inputs.job_id }}
+          WHISPER_MODEL: ${{ vars.WHISPER_MODEL || 'small' }}
+        run: node make-narration.mjs

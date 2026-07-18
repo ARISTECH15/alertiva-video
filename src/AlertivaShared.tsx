@@ -2,7 +2,7 @@
 // Règle clé : le TITRE vit dans la moitié HAUTE, les SOUS-TITRES tout en BAS
 // -> ils ne se chevauchent jamais (demande de Farid).
 import {
-  AbsoluteFill, Img, interpolate, spring, staticFile,
+  AbsoluteFill, Img, OffthreadVideo, Sequence, interpolate, spring, staticFile,
   useCurrentFrame, useVideoConfig,
 } from "remotion";
 import { SERIF, SANS, ALERT, DARK, CREAM, Cue } from "./alertiva-theme";
@@ -10,6 +10,9 @@ import { SERIF, SANS, ALERT, DARK, CREAM, Cue } from "./alertiva-theme";
 export const ALERTIVA_FPS = 30;
 
 const resolveSrc = (s?: string) => (!s ? undefined : s.startsWith("http") ? s : staticFile(s));
+
+/** Un média fourni peut être un clip vidéo (narration maison) et non une image. */
+const isVideoSrc = (s?: string) => !!s && /\.(mp4|mov|webm|m4v)(\?|$)/i.test(s);
 
 /** Bandeau chaîne info permanent en haut. */
 export const TopBar: React.FC<{ date?: string }> = ({ date }) => (
@@ -42,7 +45,17 @@ export const NewsSlide: React.FC<{
         const zoomIn = (k + index) % 2 === 0;
         const scale = interpolate(frame, [start, start + per], zoomIn ? [1.06, 1.2] : [1.2, 1.06], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
         const opacity = list.length === 1 ? 1 : interpolate(frame, [start - 10, start + 10, start + per - 10, start + per + 10], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-        return <Img key={k} src={resolveSrc(img)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity, transform: `scale(${scale})` }} />;
+        const mediaStyle: React.CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity, transform: `scale(${scale})` };
+        // Clip vidéo : joué dans SON créneau (Sequence) et muet — la piste audio
+        // est la narration de Farid, jamais le son d'origine du clip.
+        if (isVideoSrc(img)) {
+          return (
+            <Sequence key={k} from={Math.round(start)} durationInFrames={Math.max(1, Math.ceil(per))} layout="none">
+              <OffthreadVideo src={resolveSrc(img) as string} muted style={mediaStyle} />
+            </Sequence>
+          );
+        }
+        return <Img key={k} src={resolveSrc(img)} style={mediaStyle} />;
       })}
       {/* Voile : sombre en haut (lisibilité titre) + sombre en bas (lisibilité sous-titres) */}
       <AbsoluteFill style={{ background:
