@@ -13,7 +13,8 @@ import {
   ROOT, die,
   fetchRecentArticles, stripMd, firstSentence, sentences, tts, probeDuration, parseVtt, proportionalSpans,
   humaniserJT, makeMusicTrack, prependSilence, shiftCues, LEAD_SEC,
-  downloadImage, renderRemotion, muxFinal, maxrateForSize, uploadVideo, recordVideo, CAN_UPLOAD,
+  downloadImage, renderRemotion, muxFinal, maxrateForSize, ensureUnderLimit, fileMB,
+  uploadVideo, recordVideo, CAN_UPLOAD,
 } from "./lib/alertiva.mjs";
 
 const N = 15; // JT complet : ~15 titres pour viser plusieurs minutes
@@ -107,6 +108,10 @@ async function main() {
     const out = path.join(outDir, outName);
     muxFinal(raw, musicAbs, out, { maxrateK: mr, leadSec: LEAD_SEC });
     fs.rmSync(raw, { force: true });
+    // Vérifié AVANT l'upload : un dépassement découvert plus tard ferait perdre
+    // les vingt minutes de rendu qui viennent de s'écouler.
+    ensureUnderLimit(out);
+    console.log(`   → ${outName} : ${fileMB(out).toFixed(1)} Mo`);
     return out;
   };
 

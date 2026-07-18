@@ -15,7 +15,8 @@ import {
   fetchRecentArticles, videoedArticleIds, lastVideoCategories,
   stripMd, sentences, firstSentence, tts, probeDuration, parseVtt,
   humaniser, makeMusicTrack, prependSilence, shiftCues, LEAD_SEC,
-  downloadImage, renderRemotion, muxFinal, maxrateForSize, uploadVideo, recordVideo, updateArticleCover, CAN_UPLOAD,
+  downloadImage, renderRemotion, muxFinal, maxrateForSize, ensureUnderLimit, fileMB,
+  uploadVideo, recordVideo, updateArticleCover, CAN_UPLOAD,
 } from "./lib/alertiva.mjs";
 
 const clean = (s) => stripMd(s);
@@ -142,6 +143,7 @@ async function main() {
   const finalOut = path.join(outDir, `alertiva-article-${chosen.slug}.mp4`);
   muxFinal(raw, musicAbs, finalOut, { maxrateK: maxrateForSize(durationSec), leadSec: LEAD_SEC });
   fs.rmSync(raw, { force: true });
+  ensureUnderLimit(finalOut); // vérifié avant l'upload, pas pendant
 
   const size = (fs.statSync(finalOut).size / 1024 / 1024).toFixed(1);
   console.log(`✅ Vidéo prête : ${path.relative(ROOT, finalOut)} (${size} Mo, ${Math.round(durationSec)}s)`);
