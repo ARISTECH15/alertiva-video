@@ -140,12 +140,18 @@ export const Outro: React.FC = () => {
         color: "#fff", letterSpacing: 3, lineHeight: 1.05 }}>
         ALERTIVA<span style={{ color: ALERT }}>NEWS</span>
       </div>
-      {/* CTA abonne-toi + partage */}
-      <div style={{ marginTop: 46, display: "flex", gap: 26 }}>
-        <span style={{ background: "#fff", color: DARK, fontFamily: SANS, fontWeight: 800, fontSize: 44,
-          padding: "18px 34px", borderRadius: 16 }}>🔔 Abonne-toi</span>
-        <span style={{ background: ALERT, color: "#fff", fontFamily: SANS, fontWeight: 800, fontSize: 44,
-          padding: "18px 34px", borderRadius: 16 }}>📲 Partage</span>
+      {/* Ce qu'est Alertiva News, en une ligne */}
+      <div style={{ marginTop: 22, fontFamily: SANS, fontSize: 38, color: CREAM, textAlign: "center", lineHeight: 1.3 }}>
+        L&apos;essentiel de l&apos;actualité,<br />vérifiée et sourcée, chaque jour.
+      </div>
+      {/* CTA : j'aime + abonne-toi + partage */}
+      <div style={{ marginTop: 40, display: "flex", gap: 18, flexWrap: "wrap", justifyContent: "center" }}>
+        <span style={{ background: "#fff", color: DARK, fontFamily: SANS, fontWeight: 800, fontSize: 38,
+          padding: "16px 26px", borderRadius: 14 }}>👍 J&apos;aime</span>
+        <span style={{ background: ALERT, color: "#fff", fontFamily: SANS, fontWeight: 800, fontSize: 38,
+          padding: "16px 26px", borderRadius: 14 }}>🔔 Abonne-toi</span>
+        <span style={{ background: "#fff", color: DARK, fontFamily: SANS, fontWeight: 800, fontSize: 38,
+          padding: "16px 26px", borderRadius: 14 }}>📲 Partage</span>
       </div>
       <div style={{ marginTop: 40, transform: `scale(${pulse})`, background: "transparent", color: CREAM,
         border: `3px solid ${ALERT}`, fontFamily: SANS, fontWeight: 800, fontSize: 46, padding: "20px 44px", borderRadius: 60 }}>

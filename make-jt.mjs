@@ -81,8 +81,10 @@ async function main() {
     if (i > 0) transitions.push(spans[i].from - 0.6); // jingle juste avant le sujet suivant
     const imgRel = `work-jt/img-${i}.jpg`;
     const ok = a ? await downloadImage(a.cover_image, path.join(ROOT, "public", imgRel)) : false;
-    // Pas de badge rubrique : on n'annonce plus « sport / monde / insolite ».
-    segments.push({ type: "article", image: ok ? imgRel : undefined, title: stripMd(a?.title || ""), from, to });
+    // Texte à l'écran = l'accroche du passage (ce qu'on entend), pas le titre de
+    // l'article. Pas de badge rubrique non plus.
+    const accroche = (firstSentence(parts[i]) || stripMd(a?.title || "")).slice(0, 100);
+    segments.push({ type: "article", image: ok ? imgRel : undefined, title: accroche, from, to });
   }
   segments.push({ type: "outro", from: Math.max(0.1, durationSec - outroSec), to: durationSec });
 
@@ -135,7 +137,13 @@ async function main() {
           const token = await yt.ensureAccessToken();
           const buf = fs.readFileSync(finalWide);
           const sommaire = arts.map((a) => "• " + stripMd(a.title)).join("\n");
-          const desc = `Le journal Alertiva News du ${dateStr} — l'essentiel de l'actualité en quelques minutes.\n\nAu sommaire :\n${sommaire}\n\n👉 https://alertivanews.com\n\n#actualité #news #journal #info #alertiva`;
+          const desc =
+            `Le journal Alertiva News du ${dateStr} — l'essentiel de l'actualité en quelques minutes.\n\n` +
+            `Au sommaire :\n${sommaire}\n\n` +
+            `👍 Un like, 🔔 un abonnement et 📲 un partage nous aident énormément — et dites-nous en commentaire quel sujet vous a le plus marqué.\n\n` +
+            `— À PROPOS —\nAlertiva News, c'est l'essentiel de l'actualité française et internationale, vérifiée et sourcée, chaque jour.\n` +
+            `🌐 https://alertivanews.com\n🎵 TikTok : @alertiva\n▶️ YouTube : @ALERTIVANEWS\n\n` +
+            `#actualité #news #journal #info #alertiva`;
           const id = await yt.uploadVideo(buf, token, {
             title: `JT Alertiva News — ${dateStr}`.slice(0, 100), description: desc.slice(0, 4900),
             tags: ["actualité", "news", "journal", "JT", "alertiva"], privacy: "public",
@@ -152,7 +160,11 @@ async function main() {
     if (process.env.META_ENABLED !== "0") {
       try {
         const meta = await import("./lib/facebook.mjs");
-        const cap = `Le JT Alertiva News du ${dateStr} — l'essentiel de l'actualité.\n\n👉 https://alertivanews.com\n\n#actualité #news #JT #alertiva`;
+        const cap = `Le JT Alertiva News du ${dateStr} — l'essentiel de l'actualité.\n\n` +
+          `👍 Un like, 🔔 abonne-toi et 📲 partage. Quel sujet t'a le plus marqué ? Dis-le en commentaire.\n\n` +
+          `🔗 Tous nos articles : alertivanews.com (lien en bio)\n\n` +
+          `Alertiva News — l'essentiel de l'actualité, vérifiée et sourcée, chaque jour.\n\n` +
+          `#actualité #news #JT #alertiva`;
         const r = await meta.publishToMeta(urlV, cap, { fb: false, ig: true });
         console.log("   → Meta (JT) :", JSON.stringify(r));
       } catch (e) { console.log("   ⚠ Meta JT (ignoré) : " + (e.message || e)); }

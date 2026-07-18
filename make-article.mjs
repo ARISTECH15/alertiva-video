@@ -13,7 +13,7 @@ import path from "node:path";
 import {
   ROOT, CAT_FR, die,
   fetchRecentArticles, videoedArticleIds, lastVideoCategories,
-  stripMd, sentences, tts, probeDuration, parseVtt,
+  stripMd, sentences, firstSentence, tts, probeDuration, parseVtt,
   humaniser, makeMusicTrack, prependSilence, shiftCues, LEAD_SEC,
   downloadImage, renderRemotion, muxFinal, maxrateForSize, uploadVideo, recordVideo, updateArticleCover, CAN_UPLOAD,
 } from "./lib/alertiva.mjs";
@@ -115,8 +115,11 @@ async function main() {
   // Timeline. L'image démarre à 0 : elle couvre le jingle d'ouverture, il n'y a
   // plus de carte de générique. Pas de badge rubrique non plus.
   const outroSec = Math.min(2.6, durationSec * 0.09);
+  // Le texte à l'écran est L'ACCROCHE, pas le titre de l'article : ceux qui
+  // regardent sans le son doivent lire la même promesse que celle qu'on entend.
+  const accroche = (humanise ? firstSentence(humanise) : clean(chosen.title)).slice(0, 100);
   const segments = [
-    { type: "article", images, title: clean(chosen.title), from: 0, to: Math.max(0.1, durationSec - outroSec) },
+    { type: "article", images, title: accroche, from: 0, to: Math.max(0.1, durationSec - outroSec) },
     { type: "outro", from: Math.max(0.1, durationSec - outroSec), to: durationSec },
   ];
 
@@ -162,7 +165,13 @@ async function main() {
           // Lien PROFOND vers l'article : YouTube est le seul réseau où le lien
           // est cliquable, autant envoyer sur le sujet que la personne vient de voir.
           const lien = `https://alertivanews.com/article/${chosen.slug}`;
-          const desc = `${clean(chosen.summary).slice(0, 300)}\n\n👉 L'article complet : ${lien}\n\nToute l'actu : https://alertivanews.com\n\n#actualité #news #info #alertiva`;
+          const desc =
+            `${clean(chosen.summary).slice(0, 300)}\n\n` +
+            `👉 L'article complet : ${lien}\n\n` +
+            `👍 Un like, 🔔 un abonnement et 📲 un partage nous aident énormément — et dites-nous en commentaire ce que vous en pensez.\n\n` +
+            `— À PROPOS —\nAlertiva News, c'est l'essentiel de l'actualité française et internationale, vérifiée et sourcée, chaque jour.\n` +
+            `🌐 https://alertivanews.com\n🎵 TikTok : @alertiva\n▶️ YouTube : @ALERTIVANEWS\n\n` +
+            `#actualité #news #info #alertiva`;
           const id = await yt.uploadVideo(buf, token, {
             title: clean(chosen.title).slice(0, 100), description: desc,
             tags: ["actualité", "news", "info", "alertiva", "shorts"], privacy: "public",
@@ -182,7 +191,9 @@ async function main() {
         // Instagram ne rend pas les URL cliquables en légende : on renvoie vers le
         // lien en bio, et on donne l'adresse en clair pour Facebook, où elle l'est.
         const cap = `${clean(chosen.title)}\n\n${clean(chosen.summary).slice(0, 200)}\n\n` +
+          `👍 Un like, 🔔 abonne-toi et 📲 partage si l'info t'a été utile. Ton avis en commentaire nous intéresse.\n\n` +
           `🔗 L'article complet : alertivanews.com/article/${chosen.slug}\n(lien en bio)\n\n` +
+          `Alertiva News — l'essentiel de l'actualité, vérifiée et sourcée, chaque jour.\n\n` +
           `#actualité #news #info #alertiva`;
         const r = await meta.publishToMeta(publicUrl, cap, { fb: true, ig: true });
         console.log("   → Meta :", JSON.stringify(r));
