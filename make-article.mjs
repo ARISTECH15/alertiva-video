@@ -14,7 +14,7 @@ import {
   ROOT, CAT_FR, die,
   fetchRecentArticles, videoedArticleIds, lastVideoCategories,
   stripMd, sentences, firstSentence, tts, probeDuration, parseVtt,
-  humaniser, makeMusicTrack, prependSilence, shiftCues, LEAD_SEC,
+  humaniser, makeMusicTrack, prependSilence, shiftCues, leadSeconds,
   downloadImage, renderRemotion, muxFinal, maxrateForSize, ensureUnderLimit, fileMB,
   uploadVideo, recordVideo, updateArticleCover, CAN_UPLOAD,
 } from "./lib/alertiva.mjs";
@@ -81,13 +81,14 @@ async function main() {
   const narration = humanise || secours;
   console.log(humanise ? "     accroche IA obtenue" : "     ⚠ IA indisponible → texte de repli");
 
+  const LEAD = leadSeconds(); // durée du jingle fourni (assets/intro.mp3) ou 2,2 s
   console.log("   → voix off edge-tts…");
   tts(narration, mp3Abs, vttAbs);
   // Silence d'ouverture : le jingle doit s'entendre avant le premier mot.
-  let durationSec = prependSilence(mp3Abs, LEAD_SEC) + 0.4;
-  console.log(`   → durée : ${durationSec.toFixed(1)}s (dont ${LEAD_SEC}s de jingle)`);
+  let durationSec = prependSilence(mp3Abs, LEAD) + 0.4;
+  console.log(`   → durée : ${durationSec.toFixed(1)}s (dont ${LEAD}s de jingle)`);
 
-  const cues = shiftCues(parseVtt(vttAbs), LEAD_SEC);
+  const cues = shiftCues(parseVtt(vttAbs), LEAD);
   const parts = [narration];
 
   // Images du sujet : plusieurs illustrations IA (angles variés) si une clé est configurée,
@@ -141,7 +142,7 @@ async function main() {
 
   console.log("   → mixage voix + musique + normalisation…");
   const finalOut = path.join(outDir, `alertiva-article-${chosen.slug}.mp4`);
-  muxFinal(raw, musicAbs, finalOut, { maxrateK: maxrateForSize(durationSec), leadSec: LEAD_SEC });
+  muxFinal(raw, musicAbs, finalOut, { maxrateK: maxrateForSize(durationSec), leadSec: LEAD });
   fs.rmSync(raw, { force: true });
   ensureUnderLimit(finalOut); // vérifié avant l'upload, pas pendant
 

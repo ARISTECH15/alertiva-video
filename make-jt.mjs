@@ -12,7 +12,7 @@ import path from "node:path";
 import {
   ROOT, die,
   fetchRecentArticles, stripMd, firstSentence, sentences, tts, probeDuration, parseVtt, proportionalSpans,
-  humaniserJT, makeMusicTrack, prependSilence, shiftCues, LEAD_SEC,
+  humaniserJT, makeMusicTrack, prependSilence, shiftCues, leadSeconds,
   downloadImage, renderRemotion, muxFinal, maxrateForSize, ensureUnderLimit, fileMB,
   uploadVideo, recordVideo, CAN_UPLOAD,
 } from "./lib/alertiva.mjs";
@@ -37,18 +37,19 @@ async function main() {
 
   const dateStr = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 
-  // Matière brute par sujet — sans rubrique annoncée ni titre lu à voix haute.
+  // Matière brute par sujet. On envoie LARGE : l'IA ne peut pas développer ce
+  // qu'elle n'a pas. Avec 2 phrases en entrée, elle rendait des brèves de 11 mots.
   const sujets = arts.map((a) => {
-    const sum = sentences(a.summary).slice(0, 2);
-    const body = sentences(a.content).filter((s) => !sum.includes(s)).slice(0, 2);
+    const sum = sentences(a.summary);
+    const body = sentences(a.content).filter((s) => !sum.includes(s)).slice(0, 6);
     return `${stripMd(a.title)}. ${[...sum, ...body].join(" ") || firstSentence(a.summary)}`;
   });
 
   // Un SEUL appel pour tout le journal : un par sujet ferait sauter le quota.
-  // ~55 mots par sujet ≈ 22 s : 15 sujets donnent un journal d'environ 5 min 30.
-  // Sans cette consigne chiffrée, le modèle rend des brèves de 15 mots et le JT
-  // tombe à 95 secondes (constaté le 19/07).
-  const MOTS_PAR_SUJET = Number(process.env.JT_MOTS_PAR_SUJET || 55);
+  // ~75 mots par sujet ≈ 30 s : 15 sujets donnent un journal d'environ 7 min 30,
+  // proche des JT d'avant. Sans consigne chiffrée ET sans matière suffisante en
+  // entrée, le modèle rendait 11 mots par sujet et le JT tombait à 69 secondes.
+  const MOTS_PAR_SUJET = Number(process.env.JT_MOTS_PAR_SUJET || 75);
   console.log("   → réécriture parlée du journal (accroche + question finale)…");
   const humanises = await humaniserJT(sujets, { motsParSujet: MOTS_PAR_SUJET });
   // Repli : on garde au moins la suppression du générique et des rubriques.
@@ -64,26 +65,25 @@ async function main() {
   const mp3Abs = path.join(ROOT, "public", mp3Rel);
   const vttAbs = path.join(workDir, "voice.vtt");
 
+  const LEAD = leadSeconds(); // durée du jingle fourni (assets/intro.mp3) ou 2,2 s
   console.log("   → voix off edge-tts…");
   tts(parts.join("\n\n"), mp3Abs, vttAbs);
   // Silence d'ouverture pour laisser jouer le jingle avant le premier mot.
-  const durationSec = prependSilence(mp3Abs, LEAD_SEC) + 0.4;
-  const cues = shiftCues(parseVtt(vttAbs), LEAD_SEC);
-  console.log(`   → durée : ${durationSec.toFixed(1)}s (dont ${LEAD_SEC}s de jingle)`);
+  const durationSec = prependSilence(mp3Abs, LEAD) + 0.4;
+  const cues = shiftCues(parseVtt(vttAbs), LEAD);
+  console.log(`   → durée : ${durationSec.toFixed(1)}s (dont ${LEAD}s de jingle)`);
 
   // Timeline : les passages se répartissent APRÈS le jingle ; le premier visuel
   // démarre à 0 pour le couvrir. Plus de carte de générique.
-  const spansNarration = proportionalSpans(parts, durationSec - LEAD_SEC);
-  const spans = spansNarration.map((s) => ({ from: s.from + LEAD_SEC, to: s.to + LEAD_SEC }));
+  const spansNarration = proportionalSpans(parts, durationSec - LEAD);
+  const spans = spansNarration.map((s) => ({ from: s.from + LEAD, to: s.to + LEAD }));
   const outroSec = Math.min(3, durationSec * 0.04);
 
   const segments = [];
-  const transitions = []; // instants des jingles de transition
   for (let i = 0; i < parts.length; i++) {
     const a = arts[i];
     const from = i === 0 ? 0 : spans[i].from;
     const to = i === parts.length - 1 ? Math.max(from + 0.1, durationSec - outroSec) : spans[i].to;
-    if (i > 0) transitions.push(spans[i].from - 0.6); // jingle juste avant le sujet suivant
     const imgRel = `work-jt/img-${i}.jpg`;
     const ok = a ? await downloadImage(a.cover_image, path.join(ROOT, "public", imgRel)) : false;
     // Texte à l'écran = l'accroche du passage (ce qu'on entend), pas le titre de
@@ -96,9 +96,11 @@ async function main() {
   const props = { durationSec, audioFile: mp3Rel, date: dateStr, segments, cues };
   fs.writeFileSync(path.join(workDir, "props.json"), JSON.stringify(props, null, 2));
 
-  console.log(`   → jingle d'ouverture + ${transitions.length} transitions…`);
+  // Jingle d'ouverture uniquement : les transitions entre sujets hachaient le
+  // journal et cassaient le fil de la narration (retirées à la demande de Farid).
+  console.log("   → jingle d'ouverture…");
   const musicAbs = path.join(workDir, "music.m4a");
-  makeMusicTrack(durationSec, [0, ...transitions], musicAbs);
+  makeMusicTrack(durationSec, [0], musicAbs);
 
   const outDir = path.join(ROOT, "out");
   fs.mkdirSync(outDir, { recursive: true });
@@ -110,7 +112,7 @@ async function main() {
     const raw = path.join(outDir, `raw-${outName}`);
     renderRemotion(compId, propsPath, raw);
     const out = path.join(outDir, outName);
-    muxFinal(raw, musicAbs, out, { maxrateK: mr, leadSec: LEAD_SEC });
+    muxFinal(raw, musicAbs, out, { maxrateK: mr, leadSec: LEAD });
     fs.rmSync(raw, { force: true });
     // Vérifié AVANT l'upload : un dépassement découvert plus tard ferait perdre
     // les vingt minutes de rendu qui viennent de s'écouler.
