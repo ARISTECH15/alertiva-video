@@ -37,12 +37,20 @@ async function main() {
 
   const dateStr = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 
-  // Matière brute par sujet. On envoie LARGE : l'IA ne peut pas développer ce
-  // qu'elle n'a pas. Avec 2 phrases en entrée, elle rendait des brèves de 11 mots.
-  const sujets = arts.map((a) => {
+  // Deux versions volontairement distinctes :
+  //  - RICHE : envoyée à l'IA, qui ne peut pas développer ce qu'elle n'a pas.
+  //  - COURTE : lue telle quelle SI l'IA échoue. Réutiliser la version riche en
+  //    repli a produit un JT de 15 min 13 (27 385 images) que le rendu n'a pas
+  //    pu terminer en 90 min — le 19/07, run annulé à 24 %.
+  const sujetsRiches = arts.map((a) => {
     const sum = sentences(a.summary);
     const body = sentences(a.content).filter((s) => !sum.includes(s)).slice(0, 6);
     return `${stripMd(a.title)}. ${[...sum, ...body].join(" ") || firstSentence(a.summary)}`;
+  });
+  const sujetsCourts = arts.map((a) => {
+    const sum = sentences(a.summary).slice(0, 2);
+    const body = sentences(a.content).filter((s) => !sum.includes(s)).slice(0, 1);
+    return [...sum, ...body].join(" ") || firstSentence(a.summary);
   });
 
   // Un SEUL appel pour tout le journal : un par sujet ferait sauter le quota.
@@ -51,13 +59,29 @@ async function main() {
   // entrée, le modèle rendait 11 mots par sujet et le JT tombait à 69 secondes.
   const MOTS_PAR_SUJET = Number(process.env.JT_MOTS_PAR_SUJET || 75);
   console.log("   → réécriture parlée du journal (accroche + question finale)…");
-  const humanises = await humaniserJT(sujets, { motsParSujet: MOTS_PAR_SUJET });
-  // Repli : on garde au moins la suppression du générique et des rubriques.
-  const parts = humanises || sujets.map((s, i) =>
-    i === sujets.length - 1
+  const humanises = await humaniserJT(sujetsRiches, { motsParSujet: MOTS_PAR_SUJET });
+  // Repli sur la version COURTE : la version riche donnerait un JT ingérable.
+  let parts = humanises || sujetsCourts.map((s, i) =>
+    i === sujetsCourts.length - 1
       ? `${s} Et vous, qu'est-ce qui vous marque le plus dans l'actualité du jour ? Dites-le en commentaire.`
       : s);
-  console.log(humanises ? `     ${parts.length} passages réécrits` : "     ⚠ IA indisponible → texte de repli");
+  console.log(humanises ? `     ${parts.length} passages réécrits` : "     ⚠ IA indisponible → texte de repli (version courte)");
+
+  // Garde-fou dur : au-delà de cette durée, le rendu ne tient pas dans les 90 min
+  // du workflow et tout le travail est perdu. On tronque AVANT la synthèse vocale.
+  const MAX_MIN = Number(process.env.JT_MAX_MINUTES || 9);
+  const motsMax = Math.round((MAX_MIN * 60 / 60) * 150);
+  const motsTotal = parts.reduce((n, p) => n + p.split(/\s+/).filter(Boolean).length, 0);
+  if (motsTotal > motsMax) {
+    const ratio = motsMax / motsTotal;
+    parts = parts.map((p) => {
+      const mots = p.split(/\s+/).filter(Boolean);
+      return mots.slice(0, Math.max(12, Math.floor(mots.length * ratio))).join(" ");
+    });
+    const apres = parts.reduce((n, p) => n + p.split(/\s+/).filter(Boolean).length, 0);
+    console.log(`   ⚠ narration de ${motsTotal} mots (~${Math.round(motsTotal / 150)} min) → tronquée à ${apres} mots pour tenir dans le rendu`);
+  }
+  console.log(`   → narration : ${parts.reduce((n, p) => n + p.split(/\s+/).filter(Boolean).length, 0)} mots ≈ ${Math.round(parts.reduce((n, p) => n + p.split(/\s+/).filter(Boolean).length, 0) / 150)} min`);
 
   const workDir = path.join(ROOT, "public", "work-jt");
   fs.mkdirSync(workDir, { recursive: true });
