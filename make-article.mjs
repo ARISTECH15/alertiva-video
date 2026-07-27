@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Alertiva News — génère UNE vidéo verticale pour le meilleur article récent
- * pas encore mis en vidéo (> 1 min, monétisable). Voix off gratuite edge-tts,
- * musique de fond légère, sous-titres, CTA abonne + partage.
+ * pas encore mis en vidéo (> 1 min, monétisable). Voix ElevenLabs (repli edge-tts
+ * si quota épuisé), plusieurs images, pas de jingle, sous-titres, CTA abonne + partage.
  *
  *   node make-article.mjs
  *
@@ -13,8 +13,8 @@ import path from "node:path";
 import {
   ROOT, CAT_FR, die,
   fetchRecentArticles, videoedArticleIds, lastVideoCategories,
-  stripMd, sentences, firstSentence, tts, probeDuration, parseVtt,
-  humaniser, makeMusicTrack, prependSilence, shiftCues, leadSeconds,
+  stripMd, sentences, firstSentence, ttsBest, probeDuration, parseVtt,
+  humaniser,
   downloadImage, renderRemotion, muxFinal, maxrateForSize, ensureUnderLimit, fileMB,
   uploadVideo, recordVideo, updateArticleCover, CAN_UPLOAD,
 } from "./lib/alertiva.mjs";
@@ -81,15 +81,13 @@ async function main() {
   const narration = humanise || secours;
   console.log(humanise ? "     accroche IA obtenue" : "     ⚠ IA indisponible → texte de repli");
 
-  const LEAD = leadSeconds(); // durée du jingle fourni (assets/intro.mp3) ou 2,2 s
-  console.log("   → voix off edge-tts…");
-  tts(narration, mp3Abs, vttAbs);
-  // Silence d'ouverture : le jingle doit s'entendre avant le premier mot.
-  let durationSec = prependSilence(mp3Abs, LEAD) + 0.4;
-  console.log(`   → durée : ${durationSec.toFixed(1)}s (dont ${LEAD}s de jingle)`);
+  // Plus de jingle d'ouverture : la voix démarre à 0 (rendu net, façon DDUNIT).
+  console.log("   → voix off (ElevenLabs, repli edge-tts auto si quota épuisé)…");
+  const engine = await ttsBest(narration, mp3Abs, vttAbs);
+  let durationSec = probeDuration(mp3Abs) + 0.4;
+  console.log(`   → voix : ${engine} · durée ${durationSec.toFixed(1)}s`);
 
-  const cues = shiftCues(parseVtt(vttAbs), LEAD);
-  const parts = [narration];
+  const cues = parseVtt(vttAbs);
 
   // Images du sujet : plusieurs illustrations IA (angles variés) si une clé est configurée,
   // sinon la couverture existante. La 1re devient aussi la couverture de l'article sur le site.
@@ -97,7 +95,7 @@ async function main() {
   try {
     const ai = await import("./lib/aiImage.mjs");
     if (await ai.haveImageKey()) {
-      const n = Number(process.env.AI_IMAGES_PER_ARTICLE || 3);
+      const n = Number(process.env.AI_IMAGES_PER_ARTICLE || 5);
       const urls = await ai.generateImages(`${clean(chosen.title)} — actualité ${cat.toLowerCase()}`, n);
       if (urls.length) {
         await updateArticleCover(chosen.id, urls[0]);
@@ -129,20 +127,15 @@ async function main() {
   const props = { durationSec, audioFile: mp3Rel, date: dateStr, category: "", segments, cues };
   fs.writeFileSync(path.join(workDir, "props.json"), JSON.stringify(props, null, 2));
 
-  // Musique : jingle d'ouverture puis nappe de fond.
-  console.log("   → jingle + musique de fond…");
-  const musicAbs = path.join(workDir, "music.m4a");
-  makeMusicTrack(durationSec, [0], musicAbs);
-
   console.log(`   → rendu Remotion (${Math.round(durationSec)}s)…`);
   const outDir = path.join(ROOT, "out");
   fs.mkdirSync(outDir, { recursive: true });
   const raw = path.join(outDir, "alertiva-article-raw.mp4");
   renderRemotion("AlertivaArticle", path.join(workDir, "props.json"), raw);
 
-  console.log("   → mixage voix + musique + normalisation…");
+  console.log("   → normalisation audio (voix seule, façon DDUNIT)…");
   const finalOut = path.join(outDir, `alertiva-article-${chosen.slug}.mp4`);
-  muxFinal(raw, musicAbs, finalOut, { maxrateK: maxrateForSize(durationSec), leadSec: LEAD });
+  muxFinal(raw, null, finalOut, { maxrateK: maxrateForSize(durationSec) });
   fs.rmSync(raw, { force: true });
   ensureUnderLimit(finalOut); // vérifié avant l'upload, pas pendant
 
