@@ -89,24 +89,44 @@ async function main() {
 
   const cues = parseVtt(vttAbs);
 
-  // Images du sujet : plusieurs illustrations IA (angles variés) si une clé est configurée,
-  // sinon la couverture existante. La 1re devient aussi la couverture de l'article sur le site.
+  // Images du sujet : plusieurs illustrations (angles variés) pour un vrai défilé.
+  // 1) fournisseur IA payant (fal/OpenAI/Google) si clé + solde ; 2) complément
+  // GRATUIT via Pollinations (aucune clé) jusqu'à N ; 3) dernier repli : la couverture.
+  const N_IMG = Number(process.env.AI_IMAGES_PER_ARTICLE || 5);
   const images = [];
   try {
     const ai = await import("./lib/aiImage.mjs");
     if (await ai.haveImageKey()) {
-      const n = Number(process.env.AI_IMAGES_PER_ARTICLE || 5);
-      const urls = await ai.generateImages(`${clean(chosen.title)} — actualité ${cat.toLowerCase()}`, n);
-      if (urls.length) {
-        await updateArticleCover(chosen.id, urls[0]);
-        for (let i = 0; i < urls.length; i++) {
-          const rel = `work-article/img-${i}.jpg`;
-          if (await downloadImage(urls[i], path.join(ROOT, "public", rel))) images.push(rel);
-        }
-        console.log(`   → ${images.length} images IA générées`);
+      const urls = await ai.generateImages(`${clean(chosen.title)} — actualité ${cat.toLowerCase()}`, N_IMG);
+      for (let i = 0; i < urls.length; i++) {
+        const rel = `work-article/img-${i}.jpg`;
+        if (await downloadImage(urls[i], path.join(ROOT, "public", rel))) images.push(rel);
       }
+      if (images.length) { await updateArticleCover(chosen.id, urls[0]); console.log(`   → ${images.length} image(s) IA (fal) générée(s)`); }
     }
-  } catch (e) { console.log("   ⚠ images IA (repli banque) : " + (e.message || e)); }
+  } catch (e) { console.log("   ⚠ images IA payantes indisponibles : " + (e.message || e)); }
+
+  // Complément GRATUIT (Pollinations, sans clé) : garantit le défilé même si le
+  // solde fal est épuisé. Angles variés pour du rythme, façon DDUNIT.
+  if (images.length < N_IMG) {
+    const ANGLES = [
+      "wide cinematic establishing shot", "the scene from a distance, sense of motion",
+      "atmosphere, crowd, flags and lights, mood shot", "symbolic environmental context, no people",
+      "close environmental detail, textures",
+    ];
+    const base = `editorial news illustration, photojournalistic, cinematic lighting, realistic, ` +
+      `no text, no letters, no logo, no watermark, not a real identifiable person, vertical: ${clean(chosen.title)}`;
+    for (let i = images.length; i < N_IMG; i++) {
+      const prompt = `${base}, ${ANGLES[i % ANGLES.length]}`;
+      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
+        `?width=1080&height=1920&nologo=true&model=flux&seed=${100 + i}`;
+      const rel = `work-article/xtra-${i}.jpg`;
+      if (await downloadImage(url, path.join(ROOT, "public", rel))) images.push(rel);
+    }
+    console.log(`   → ${images.length} image(s) au total (complément Pollinations gratuit)`);
+  }
+
+  // Dernier repli : la couverture de l'article.
   if (!images.length) {
     const rel = "work-article/img.jpg";
     if (await downloadImage(chosen.cover_image, path.join(ROOT, "public", rel))) images.push(rel);
