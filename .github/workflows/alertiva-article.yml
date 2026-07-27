@@ -5,7 +5,12 @@ name: Alertiva — Vidéo par article
 on:
   schedule:
     - cron: "30 6,8,10,12,14,16,18,20 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publier sur les réseaux (FB/IG/YouTube) ? Décoché = rendu de test seul."
+        type: boolean
+        default: false
 
 concurrency:
   group: alertiva-article
@@ -46,4 +51,14 @@ jobs:
       - name: Générer la vidéo du meilleur article récent
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Voix premium (facultatif) : si le secret existe, ttsBest() l'utilise ;
+          # sinon repli automatique edge-tts. On peut aussi mettre la clé dans
+          # Supabase settings.voice_key_elevenlabs (lue via le service role).
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+          # Déclenchement manuel sans cocher « publish » = rendu de test : on rend et
+          # on upload sur Supabase, mais on NE publie PAS sur les réseaux. Le cron
+          # planifié (github.event.inputs.publish vide) publie normalement.
+          META_ENABLED: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'true') && '0' || '1' }}
+          YT_ENABLED: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'true') && '0' || '1' }}
         run: node make-article.mjs
