@@ -106,24 +106,31 @@ async function main() {
     }
   } catch (e) { console.log("   ⚠ images IA payantes indisponibles : " + (e.message || e)); }
 
+  // Photo réelle de l'article (source presse) en 1er visuel — toujours disponible.
+  if (images.length < N_IMG && chosen.cover_image) {
+    const rel = "work-article/cover.jpg";
+    if (await downloadImage(chosen.cover_image, path.join(ROOT, "public", rel))) images.push(rel);
+  }
+
   // Complément GRATUIT (Pollinations, sans clé) : garantit le défilé même si le
-  // solde fal est épuisé. Angles variés pour du rythme, façon DDUNIT.
+  // solde fal est épuisé. Prompts COURTS (les longs échouent souvent) + réessais.
   if (images.length < N_IMG) {
-    const ANGLES = [
-      "wide cinematic establishing shot", "the scene from a distance, sense of motion",
-      "atmosphere, crowd, flags and lights, mood shot", "symbolic environmental context, no people",
-      "close environmental detail, textures",
-    ];
-    const base = `editorial news illustration, photojournalistic, cinematic lighting, realistic, ` +
-      `no text, no letters, no logo, no watermark, not a real identifiable person, vertical: ${clean(chosen.title)}`;
+    const ANGLES = ["establishing wide shot", "seen from a distance", "atmosphere and mood",
+      "symbolic context", "close-up detail"];
+    const subj = clean(chosen.title);
     for (let i = images.length; i < N_IMG; i++) {
-      const prompt = `${base}, ${ANGLES[i % ANGLES.length]}`;
-      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
-        `?width=1080&height=1920&nologo=true&model=flux&seed=${100 + i}`;
+      const prompt = `${subj}, ${ANGLES[i % ANGLES.length]}, cinematic editorial news photo, realistic, no text`;
       const rel = `work-article/xtra-${i}.jpg`;
-      if (await downloadImage(url, path.join(ROOT, "public", rel))) images.push(rel);
+      let ok = false;
+      for (let a = 0; a < 3 && !ok; a++) {
+        const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
+          `?width=1080&height=1920&nologo=true&model=flux&seed=${100 + i * 9 + a}`;
+        ok = await downloadImage(url, path.join(ROOT, "public", rel), 60000);
+        if (!ok) await new Promise((r) => setTimeout(r, 4000));
+      }
+      if (ok) images.push(rel);
     }
-    console.log(`   → ${images.length} image(s) au total (complément Pollinations gratuit)`);
+    console.log(`   → ${images.length} image(s) au total (Pollinations gratuit, avec réessais)`);
   }
 
   // Dernier repli : la couverture de l'article.
