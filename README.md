@@ -11,10 +11,21 @@ Projet **totalement isolé de DDUNIT** : ne lit/écrit que le Supabase Alertiva 
 | **Par article** (la meilleure du moment) | `make-article.mjs` | ~8×/jour (heures de forte audience) + manuel | > 1 min, monétisable |
 | **Le JT du soir** (récap du jour) | `make-jt.mjs` | chaque soir 22h Paris + manuel | 2-3 min |
 
-Chaque vidéo : voix off **edge-tts gratuite** (Microsoft Neural, FR), sous-titres synchronisés
-sous le titre (jamais dessus), image nette du sujet, **musique de fond légère** façon info,
-et **CTA « abonne-toi + partage »** en clôture. Le MP4 est envoyé dans le bucket Supabase
-Storage `videos` et enregistré dans la table `article_videos` (prêt pour la publication auto).
+Chaque vidéo : voix off (**Shorts par article** : **ElevenLabs**, avec repli automatique
+**edge-tts** si quota épuisé/pas de clé/panne — cf. `ttsBest()` ; **JT du soir** : **edge-tts**
+Microsoft Neural, FR), sous-titres synchronisés sous le titre (jamais dessus, titre coupé au
+**mot entier**), **musique de fond légère** façon info, et **CTA « abonne-toi + partage »** en
+clôture. Le MP4 est envoyé dans le bucket Supabase Storage `videos` et enregistré dans la table
+`article_videos`.
+
+> MàJ 27/07/2026 — **Shorts par article** (`make-article.mjs`) : voix **ElevenLabs**
+> (clés Supabase `settings.voice_key_elevenlabs` / `settings.voice_id_elevenlabs`, repli edge-tts) ;
+> visuels = **5 vraies photos de banque** (photo réelle de l'article en 1er visuel, puis **Pexels**
+> via `settings.img_key_pexels` sinon **Openverse** sans clé) avec Ken Burns + fondu — **fini l'IA
+> générée** (fal.ai abandonné) ; **plus de jingle d'ouverture** (voix nette dès la 1re seconde) ;
+> **publie automatiquement** sur Facebook + Instagram (Reels) + YouTube.
+> Le **JT du soir** (`make-jt.mjs`) reste sur **edge-tts + jingle** (inchangé, pour préserver le
+> quota ElevenLabs).
 
 ## Fonctionnement (cloud)
 
