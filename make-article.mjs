@@ -115,7 +115,13 @@ async function main() {
   const outroSec = Math.min(2.6, durationSec * 0.09);
   // Le texte à l'écran est L'ACCROCHE, pas le titre de l'article : ceux qui
   // regardent sans le son doivent lire la même promesse que celle qu'on entend.
-  const accroche = (humanise ? firstSentence(humanise) : clean(chosen.title)).slice(0, 100);
+  // Accroche affichée à l'écran. On coupe au MOT entier (jamais au milieu) : un titre
+  // tronqué sur « alar… » au lieu d'« alarmante » fait amateur. Phrase entière si
+  // raisonnable, sinon dernier mot complet + « … ».
+  const rawAccroche = (humanise ? firstSentence(humanise) : clean(chosen.title)).trim();
+  const accroche = rawAccroche.length <= 120
+    ? rawAccroche
+    : rawAccroche.slice(0, 120).replace(/\s+\S*$/, "").replace(/[\s.,;:]+$/, "") + "…";
   const segments = [
     { type: "article", images, title: accroche, from: 0, to: Math.max(0.1, durationSec - outroSec) },
     { type: "outro", from: Math.max(0.1, durationSec - outroSec), to: durationSec },
