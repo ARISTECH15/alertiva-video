@@ -15,8 +15,8 @@ import {
   fetchRecentArticles, videoedArticleIds, lastVideoCategories,
   stripMd, sentences, firstSentence, ttsBest, probeDuration, parseVtt,
   humaniser,
-  downloadImage, renderRemotion, muxFinal, maxrateForSize, ensureUnderLimit, fileMB,
-  uploadVideo, recordVideo, updateArticleCover, CAN_UPLOAD,
+  downloadImage, stockImages, renderRemotion, muxFinal, maxrateForSize, ensureUnderLimit, fileMB,
+  uploadVideo, recordVideo, CAN_UPLOAD,
 } from "./lib/alertiva.mjs";
 
 const clean = (s) => stripMd(s);
@@ -89,55 +89,26 @@ async function main() {
 
   const cues = parseVtt(vttAbs);
 
-  // Images du sujet : plusieurs illustrations (angles variés) pour un vrai défilé.
-  // 1) fournisseur IA payant (fal/OpenAI/Google) si clé + solde ; 2) complément
-  // GRATUIT via Pollinations (aucune clé) jusqu'à N ; 3) dernier repli : la couverture.
+  // Images : de VRAIES photos de banque gratuite (façon DDUNIT), pas d'IA déformée.
+  // 1) la photo réelle de l'article (source presse) ; 2) complément Pexels (clé
+  // settings.img_key_pexels) sinon Openverse (sans clé), mots-clés EN via Groq.
   const N_IMG = Number(process.env.AI_IMAGES_PER_ARTICLE || 5);
   const images = [];
-  try {
-    const ai = await import("./lib/aiImage.mjs");
-    if (await ai.haveImageKey()) {
-      const urls = await ai.generateImages(`${clean(chosen.title)} — actualité ${cat.toLowerCase()}`, N_IMG);
-      for (let i = 0; i < urls.length; i++) {
-        const rel = `work-article/img-${i}.jpg`;
-        if (await downloadImage(urls[i], path.join(ROOT, "public", rel))) images.push(rel);
-      }
-      if (images.length) { await updateArticleCover(chosen.id, urls[0]); console.log(`   → ${images.length} image(s) IA (fal) générée(s)`); }
-    }
-  } catch (e) { console.log("   ⚠ images IA payantes indisponibles : " + (e.message || e)); }
-
-  // Photo réelle de l'article (source presse) en 1er visuel — toujours disponible.
-  if (images.length < N_IMG && chosen.cover_image) {
+  if (chosen.cover_image) {
     const rel = "work-article/cover.jpg";
     if (await downloadImage(chosen.cover_image, path.join(ROOT, "public", rel))) images.push(rel);
   }
-
-  // Complément GRATUIT (Pollinations, sans clé) : garantit le défilé même si le
-  // solde fal est épuisé. Prompts COURTS (les longs échouent souvent) + réessais.
-  if (images.length < N_IMG) {
-    const ANGLES = ["establishing wide shot", "seen from a distance", "atmosphere and mood",
-      "symbolic context", "close-up detail"];
-    const subj = clean(chosen.title);
-    for (let i = images.length; i < N_IMG; i++) {
-      const prompt = `${subj}, ${ANGLES[i % ANGLES.length]}, cinematic editorial news photo, realistic, no text`;
-      const rel = `work-article/xtra-${i}.jpg`;
-      let ok = false;
-      for (let a = 0; a < 3 && !ok; a++) {
-        const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
-          `?width=1080&height=1920&nologo=true&model=flux&seed=${100 + i * 9 + a}`;
-        ok = await downloadImage(url, path.join(ROOT, "public", rel), 60000);
-        if (!ok) await new Promise((r) => setTimeout(r, 4000));
-      }
-      if (ok) images.push(rel);
+  try {
+    const urls = await stockImages(
+      { title: clean(chosen.title), summary: chosen.summary, categorySlug: chosen.category_slug },
+      N_IMG + 2
+    );
+    for (let i = 0; i < urls.length && images.length < N_IMG; i++) {
+      const rel = `work-article/stock-${i}.jpg`;
+      if (await downloadImage(urls[i], path.join(ROOT, "public", rel))) images.push(rel);
     }
-    console.log(`   → ${images.length} image(s) au total (Pollinations gratuit, avec réessais)`);
-  }
-
-  // Dernier repli : la couverture de l'article.
-  if (!images.length) {
-    const rel = "work-article/img.jpg";
-    if (await downloadImage(chosen.cover_image, path.join(ROOT, "public", rel))) images.push(rel);
-  }
+  } catch (e) { console.log("   ⚠ banque d'images : " + (e.message || e)); }
+  console.log(`   → ${images.length} image(s) réelle(s) de banque`);
 
   // Timeline. L'image démarre à 0 : elle couvre le jingle d'ouverture, il n'y a
   // plus de carte de générique. Pas de badge rubrique non plus.
