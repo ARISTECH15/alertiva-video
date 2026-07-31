@@ -61,4 +61,10 @@ jobs:
           # planifié (github.event.inputs.publish vide) publie normalement.
           META_ENABLED: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'true') && '0' || '1' }}
           YT_ENABLED: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'true') && '0' || '1' }}
+          # TikTok : OFF tant que l'app n'est pas auditée. Après audit, mettre les VARIABLES
+          # de dépôt GitHub TIKTOK_LIVE=1 puis TIKTOK_DIRECT=1 (Settings → Variables) →
+          # publication directe et publique sur @alertiva, 0 intervention. Un dispatch de
+          # test (publish décoché) force TikTok à OFF pour ne pas polluer le compte.
+          TIKTOK_LIVE: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'true') && '0' || vars.TIKTOK_LIVE }}
+          TIKTOK_DIRECT: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'true') && '0' || vars.TIKTOK_DIRECT }}
         run: node make-article.mjs

@@ -200,18 +200,25 @@ async function main() {
       } catch (e) { console.log("   ⚠ Meta (ignoré) : " + (e.message || e)); }
     }
 
-    // Dépôt automatique en brouillon TikTok (@alertiva). Activé UNIQUEMENT quand l'app
-    // TikTok est passée en Live/auditée (TIKTOK_LIVE=1). En sandbox, l'upload n'atterrit
-    // pas sur le vrai compte → on l'évite pour ne pas polluer social_posts. Résilient.
+    // Publication automatique TikTok (@alertiva). Activée UNIQUEMENT quand l'app est
+    // auditée (TIKTOK_LIVE=1). Avec une app auditée → DIRECT POST public (0 intervention).
+    // Sans (app non encore auditée) → dépôt en brouillon dans l'inbox (fallback). Résilient.
     if (process.env.TIKTOK_LIVE === "1") {
       try {
         const tk = await import("./lib/tiktok.mjs");
         const token = await tk.ensureAccessToken();
         const buf = fs.readFileSync(finalOut);
-        const publishId = await tk.postVideoDraft(buf, token);
-        const st = await tk.waitInbox(publishId, token);
-        await tk.recordSocialPost({ mediaUrl: publicUrl, publishId, status: st === "SEND_TO_USER_INBOX" ? "published" : "pending" });
-        console.log(`   → TikTok brouillon : ${st}`);
+        if (process.env.TIKTOK_DIRECT === "1") {
+          const publishId = await tk.postVideoDirect(buf, token, { title: cap });
+          const st = await tk.waitPublish(publishId, token);
+          await tk.recordSocialPost({ mediaUrl: publicUrl, publishId, status: st === "PUBLISH_COMPLETE" ? "published" : "pending" });
+          console.log(`   → TikTok Direct Post : ${st}`);
+        } else {
+          const publishId = await tk.postVideoDraft(buf, token);
+          const st = await tk.waitInbox(publishId, token);
+          await tk.recordSocialPost({ mediaUrl: publicUrl, publishId, status: st === "SEND_TO_USER_INBOX" ? "published" : "pending" });
+          console.log(`   → TikTok brouillon : ${st}`);
+        }
       } catch (e) {
         console.log("   ⚠ TikTok (ignoré) : " + (e.message || e));
       }
