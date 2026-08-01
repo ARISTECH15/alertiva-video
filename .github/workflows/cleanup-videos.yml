@@ -1,0 +1,28 @@
+name: Alertiva — Nettoyage bucket vidéos (DESTRUCTIF)
+
+# Supprime TOUS les objets du bucket Supabase `videos`. Déclenchement 100% manuel,
+# avec confirmation obligatoire (taper SUPPRIMER). Les vidéos sont déjà publiées sur
+# les réseaux ; on libère le stockage Supabase.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Taper SUPPRIMER pour confirmer la suppression de TOUTES les vidéos"
+        required: true
+        default: ""
+
+jobs:
+  cleanup:
+    if: ${{ github.event.inputs.confirm == 'SUPPRIMER' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Supprimer toutes les vidéos du bucket
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: node cleanup-videos.mjs
