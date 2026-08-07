@@ -24,7 +24,7 @@ const clean = (s) => stripMd(s);
 // le remplissage était l'exact contraire d'une narration humaine.
 // > 60 s pour être monétisable (TikTok Creator Rewards). On vise ~75 s pour garder
 // une marge après variabilité de la voix + l'outro.
-const TARGET_SEC = Number(process.env.ARTICLE_TARGET_SEC || 75);
+const TARGET_SEC = Number(process.env.ARTICLE_TARGET_SEC || 85);
 
 async function main() {
   console.log("🎬 Alertiva — vidéo par article");
@@ -67,8 +67,8 @@ async function main() {
   // complétion s'effondre — et c'est la complétion qui décide de la distribution.
   const sumSents = sentences(chosen.summary);
   const contentSents = sentences(chosen.content).filter((s) => !sumSents.includes(s));
-  // Plus de matière (8 phrases de contenu) pour que le script tienne ~75 s sans rien inventer.
-  const matiere = [clean(chosen.title), ...sumSents, ...contentSents.slice(0, 8)].join(" ");
+  // Beaucoup de matière (12 phrases) pour que le script tienne ~85 s sans rien inventer.
+  const matiere = [clean(chosen.title), ...sumSents, ...contentSents.slice(0, 12)].join(" ");
 
   const workDir = path.join(ROOT, "public", "work-article");
   fs.mkdirSync(workDir, { recursive: true });
