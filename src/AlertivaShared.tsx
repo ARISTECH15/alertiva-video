@@ -109,8 +109,9 @@ export const InfoCard: React.FC<{
         <span style={{ background: ALERT, color: "#fff", fontFamily: SANS, fontWeight: 900, fontSize: 34, padding: "6px 18px", borderRadius: 6, letterSpacing: 3 }}>INFO</span>
         {category && <span style={{ color: CREAM, fontFamily: SANS, fontWeight: 800, fontSize: 30, textTransform: "uppercase", letterSpacing: 2 }}>{category}</span>}
       </div>
-      {/* Bloc texte : titre court + résumé du passage */}
-      <div style={{ position: "absolute", left: 40, right: 40, bottom: 360, opacity: appear, transform: `translateY(${(1 - appear) * 26}px)` }}>
+      {/* Bloc texte : titre court + résumé du passage — ancré EN HAUT pour laisser le
+          milieu aux sous-titres live (zone visible sur TikTok). */}
+      <div style={{ position: "absolute", left: 40, right: 40, top: 210, opacity: appear, transform: `translateY(${(1 - appear) * 26}px)` }}>
         <div style={{ width: 92, height: 8, background: ALERT, borderRadius: 4, marginBottom: 22 }} />
         {headline && (
           <div style={{ fontFamily: SERIF, fontWeight: 900, fontSize: 82, lineHeight: 1.04, color: "#fff", textShadow: "0 3px 24px rgba(0,0,0,0.95)", textTransform: "uppercase" }}>

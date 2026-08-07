@@ -22,7 +22,6 @@ export type ArticleProps = {
 };
 
 export const AlertivaArticle: React.FC<ArticleProps> = ({ audioFile, date, category, segments, cues }) => {
-  const hasCards = segments.some((s) => s.type === "card");
   return (
     <AbsoluteFill style={{ background: DARK }}>
       {segments.map((s, i) => {
@@ -39,8 +38,8 @@ export const AlertivaArticle: React.FC<ArticleProps> = ({ audioFile, date, categ
         );
       })}
       <TopBar date={date} />
-      {/* Cartes = le texte est déjà dans l'image → pas de sous-titre live. Sinon, sous-titres. */}
-      {!hasCards && <SubtitleBar cues={cues} fps={ARTICLE_FPS} />}
+      {/* Sous-titres live synchronisés (au milieu en portrait), par-dessus les cartes. */}
+      <SubtitleBar cues={cues} fps={ARTICLE_FPS} />
       {audioFile ? <Audio src={staticFile(audioFile)} /> : null}
     </AbsoluteFill>
   );
