@@ -15,7 +15,7 @@ import {
   fetchRecentArticles, videoedArticleIds, lastVideoCategories,
   stripMd, sentences, firstSentence, ttsBest, probeDuration, parseVtt,
   humaniser,
-  downloadImage, stockImages, renderRemotion, muxFinal, maxrateForSize, ensureUnderLimit, fileMB,
+  downloadImage, stockImages, sectionImagePrompts, genImagesAI, renderRemotion, muxFinal, maxrateForSize, ensureUnderLimit, fileMB,
   uploadVideo, recordVideo, CAN_UPLOAD,
 } from "./lib/alertiva.mjs";
 
@@ -92,14 +92,27 @@ async function main() {
 
   const cues = parseVtt(vttAbs);
 
-  // Images : de VRAIES photos de banque gratuite (façon DDUNIT), pas d'IA déformée.
-  // 1) la photo réelle de l'article (source presse) ; 2) complément Pexels (clé
-  // settings.img_key_pexels) sinon Openverse (sans clé), mots-clés EN via Groq.
-  // Pattern interrupt : une image toutes les ~7 s (min 5). Économe (moins d'images payantes
-  // à l'étape gpt-image, le reste comblé par Pexels gratuit). Réglable via AI_IMAGES_PER_ARTICLE.
+  // Images : gpt-image (OpenRouter) par section — plafonné, le reste en photos Pexels gratuites.
+  // Pattern interrupt ~toutes les 7 s (min 5), réglable via AI_IMAGES_PER_ARTICLE.
   const N_IMG = Number(process.env.AI_IMAGES_PER_ARTICLE || Math.max(5, Math.round(durationSec / 7)));
+  const GPT_MAX = Number(process.env.GPT_IMAGES_MAX || 4);
   const images = [];
-  if (chosen.cover_image) {
+
+  // 1) Images IA gpt-image (payantes, plafonnées) : un prompt par section, la 1ʳᵉ = accroche.
+  console.log("   → images gpt-image (OpenRouter) par section…");
+  try {
+    const aiCount = Math.min(GPT_MAX, N_IMG);
+    const prompts = await sectionImagePrompts(matiere, aiCount);
+    if (prompts?.length) {
+      const absPaths = prompts.map((_, i) => path.join(ROOT, "public", `work-article/ai-${i}.png`));
+      const written = await genImagesAI(prompts, absPaths);
+      for (const abs of written) images.push(path.relative(path.join(ROOT, "public"), abs).replace(/\\/g, "/"));
+    }
+  } catch (e) { console.log("   ⚠ gpt-image (ignoré, repli Pexels) : " + (e.message || e)); }
+  const nAi = images.length;
+
+  // 2) Compléter : photo réelle de l'article (source presse), puis photos Pexels gratuites.
+  if (chosen.cover_image && images.length < N_IMG) {
     const rel = "work-article/cover.jpg";
     if (await downloadImage(chosen.cover_image, path.join(ROOT, "public", rel))) images.push(rel);
   }
@@ -113,7 +126,7 @@ async function main() {
       if (await downloadImage(urls[i], path.join(ROOT, "public", rel))) images.push(rel);
     }
   } catch (e) { console.log("   ⚠ banque d'images : " + (e.message || e)); }
-  console.log(`   → ${images.length} image(s) réelle(s) de banque`);
+  console.log(`   → ${images.length} image(s) : ${nAi} gpt-image + ${images.length - nAi} Pexels/article`);
 
   // Timeline. L'image démarre à 0 : elle couvre le jingle d'ouverture, il n'y a
   // plus de carte de générique. Pas de badge rubrique non plus.

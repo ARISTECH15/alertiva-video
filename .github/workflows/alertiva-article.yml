@@ -56,6 +56,8 @@ jobs:
           # Supabase settings.voice_key_elevenlabs (lue via le service role).
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+          # Images gpt-image (OpenRouter). Absente/sans crédit → repli auto sur Pexels.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           # Déclenchement manuel sans cocher « publish » = rendu de test : on rend et
           # on upload sur Supabase, mais on NE publie PAS sur les réseaux. Le cron
           # planifié (github.event.inputs.publish vide) publie normalement.
