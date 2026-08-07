@@ -92,7 +92,9 @@ async function main() {
   // Images : de VRAIES photos de banque gratuite (façon DDUNIT), pas d'IA déformée.
   // 1) la photo réelle de l'article (source presse) ; 2) complément Pexels (clé
   // settings.img_key_pexels) sinon Openverse (sans clé), mots-clés EN via Groq.
-  const N_IMG = Number(process.env.AI_IMAGES_PER_ARTICLE || 5);
+  // Assez d'images pour un « pattern interrupt » toutes les ~5 s (min 6) : l'attention
+  // chute si le plan reste statique. Réglable via AI_IMAGES_PER_ARTICLE.
+  const N_IMG = Number(process.env.AI_IMAGES_PER_ARTICLE || Math.max(6, Math.round(durationSec / 5)));
   const images = [];
   if (chosen.cover_image) {
     const rel = "work-article/cover.jpg";
