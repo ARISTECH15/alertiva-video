@@ -15,7 +15,7 @@ import {
   fetchRecentArticles, videoedArticleIds, lastVideoCategories,
   stripMd, sentences, firstSentence, ttsBest, probeDuration, parseVtt,
   humaniser,
-  downloadImage, stockImages, sectionImagePrompts, genImagesAI, cardStoryboard, renderRemotion, muxFinal, maxrateForSize, ensureUnderLimit, fileMB,
+  downloadImage, stockImages, stockVideos, wikimediaImage, sectionImagePrompts, genImagesAI, cardStoryboard, renderRemotion, muxFinal, maxrateForSize, ensureUnderLimit, fileMB,
   uploadVideo, recordVideo, CAN_UPLOAD,
 } from "./lib/alertiva.mjs";
 
@@ -105,36 +105,42 @@ async function main() {
   let segments;
   if (story && story.length >= 3) {
     const N = story.length;
-    console.log(`   → ${N} carte(s) — fonds gpt-image (plafond ${GPT_MAX}) + Pexels…`);
+    console.log(`   → ${N} carte(s) — fonds : Wikimedia (personnalités) · clips vidéo · gpt-image · Pexels…`);
     const cardImgs = new Array(N).fill(null);
+    const P = (rel) => path.join(ROOT, "public", rel);
+    // Réserve de photos Pexels pour le repli final.
+    let pexPool = [];
+    try { pexPool = await stockImages({ title: clean(chosen.title), summary: chosen.summary, categorySlug: chosen.category_slug }, N + 2); } catch { /* repli */ }
+    let pp = 0, gptUsed = 0;
+    const counts = { wiki: 0, video: 0, gpt: 0, pexels: 0 };
 
-    // 1) Fond gpt-image pour les premières cartes (plafonné, payant).
-    try {
-      const aiCount = Math.min(GPT_MAX, N);
-      const prompts = story.slice(0, aiCount).map((s) => s.image);
-      const absPaths = prompts.map((_, i) => path.join(ROOT, "public", `work-article/ai-${i}.png`));
-      const written = await genImagesAI(prompts, absPaths);
-      written.forEach((abs, i) => { cardImgs[i] = path.relative(path.join(ROOT, "public"), abs).replace(/\\/g, "/"); });
-    } catch (e) { console.log("   ⚠ gpt-image (repli Pexels) : " + (e.message || e)); }
-
-    // 2) Compléter les fonds manquants : photos Pexels gratuites + photo réelle de l'article.
-    const need = cardImgs.filter((x) => !x).length;
-    const pex = [];
-    if (need > 0) {
-      try {
-        const urls = await stockImages({ title: clean(chosen.title), summary: chosen.summary, categorySlug: chosen.category_slug }, need + 3);
-        for (let i = 0; i < urls.length && pex.length < need; i++) {
-          const rel = `work-article/stock-${i}.jpg`;
-          if (await downloadImage(urls[i], path.join(ROOT, "public", rel))) pex.push(rel);
-        }
-      } catch (e) { console.log("   ⚠ Pexels : " + (e.message || e)); }
-      if (chosen.cover_image && pex.length < need) {
-        const rel = "work-article/cover.jpg";
-        if (await downloadImage(chosen.cover_image, path.join(ROOT, "public", rel))) pex.push(rel);
+    for (let i = 0; i < N; i++) {
+      const s = story[i];
+      // 1) Vraie personnalité — photo LIBRE via Wikimedia (zéro risque de monétisation).
+      if (s.entity) {
+        try {
+          const url = await wikimediaImage(s.entity);
+          if (url) { const rel = `work-article/wiki-${i}.jpg`; if (await downloadImage(url, P(rel))) { cardImgs[i] = rel; counts.wiki++; continue; } }
+        } catch { /* source suivante */ }
       }
+      // 2) Clip vidéo de stock (vivant, gratuit, commercial).
+      try {
+        const vids = await stockVideos(s.query || s.headline, 1);
+        if (vids.length) { const rel = `work-article/vid-${i}.mp4`; if (await downloadImage(vids[0], P(rel), 60000)) { cardImgs[i] = rel; counts.video++; continue; } }
+      } catch { /* source suivante */ }
+      // 3) gpt-image (plafonné, payant).
+      if (gptUsed < GPT_MAX && s.image) {
+        try {
+          const abs = P(`work-article/ai-${i}.png`);
+          const written = await genImagesAI([s.image], [abs]);
+          if (written.length) { cardImgs[i] = path.relative(P(""), written[0]).replace(/\\/g, "/"); gptUsed++; counts.gpt++; continue; }
+        } catch { /* source suivante */ }
+      }
+      // 4) Photo Pexels (repli) ; sinon réutiliser un fond déjà obtenu.
+      if (pexPool[pp]) { const rel = `work-article/stock-${i}.jpg`; if (await downloadImage(pexPool[pp++], P(rel))) { cardImgs[i] = rel; counts.pexels++; continue; } }
+      cardImgs[i] = cardImgs.find(Boolean) || null;
     }
-    let pi = 0;
-    for (let i = 0; i < N; i++) if (!cardImgs[i]) cardImgs[i] = pex[pi++] || cardImgs.find(Boolean) || null;
+    console.log(`   → fonds : ${counts.wiki} Wikimedia · ${counts.video} clip vidéo · ${counts.gpt} gpt-image · ${counts.pexels} Pexels`);
 
     const per = bodyEnd / N;
     segments = story.map((s, i) => ({

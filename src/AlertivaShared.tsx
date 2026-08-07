@@ -92,11 +92,16 @@ export const InfoCard: React.FC<{
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const zoomIn = index % 2 === 0;
-  const scale = interpolate(frame, [0, durationFrames], zoomIn ? [1.05, 1.16] : [1.16, 1.05], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  // Ken Burns plus marqué (zoom + panoramique) pour du mouvement même sur une photo fixe.
+  const scale = interpolate(frame, [0, durationFrames], zoomIn ? [1.06, 1.22] : [1.22, 1.06], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const panX = interpolate(frame, [0, durationFrames], zoomIn ? [-16, 16] : [16, -16], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const appear = spring({ frame, fps, config: { damping: 18 } });
+  const mediaStyle: React.CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale}) translateX(${panX}px)` };
   return (
     <AbsoluteFill style={{ background: DARK, overflow: "hidden" }}>
-      {image && <Img src={resolveSrc(image)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale})` }} />}
+      {image && (isVideoSrc(image)
+        ? <OffthreadVideo src={resolveSrc(image) as string} muted style={mediaStyle} />
+        : <Img src={resolveSrc(image)} style={mediaStyle} />)}
       {/* Voile : lisibilité du bloc texte (bas) et du badge (haut). */}
       <AbsoluteFill style={{ background: "linear-gradient(180deg, rgba(13,13,20,0.82) 0%, rgba(13,13,20,0.30) 26%, rgba(13,13,20,0.22) 46%, rgba(13,13,20,0.94) 100%)" }} />
       {/* Badge INFO + rubrique */}
