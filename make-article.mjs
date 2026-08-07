@@ -22,7 +22,9 @@ import {
 const clean = (s) => stripMd(s);
 // Durée visée de la narration. On ne rallonge plus artificiellement le texte :
 // le remplissage était l'exact contraire d'une narration humaine.
-const TARGET_SEC = Number(process.env.ARTICLE_TARGET_SEC || 55);
+// > 60 s pour être monétisable (TikTok Creator Rewards). On vise ~75 s pour garder
+// une marge après variabilité de la voix + l'outro.
+const TARGET_SEC = Number(process.env.ARTICLE_TARGET_SEC || 75);
 
 async function main() {
   console.log("🎬 Alertiva — vidéo par article");
@@ -65,7 +67,8 @@ async function main() {
   // complétion s'effondre — et c'est la complétion qui décide de la distribution.
   const sumSents = sentences(chosen.summary);
   const contentSents = sentences(chosen.content).filter((s) => !sumSents.includes(s));
-  const matiere = [clean(chosen.title), ...sumSents, ...contentSents.slice(0, 4)].join(" ");
+  // Plus de matière (8 phrases de contenu) pour que le script tienne ~75 s sans rien inventer.
+  const matiere = [clean(chosen.title), ...sumSents, ...contentSents.slice(0, 8)].join(" ");
 
   const workDir = path.join(ROOT, "public", "work-article");
   fs.mkdirSync(workDir, { recursive: true });
@@ -92,9 +95,9 @@ async function main() {
   // Images : de VRAIES photos de banque gratuite (façon DDUNIT), pas d'IA déformée.
   // 1) la photo réelle de l'article (source presse) ; 2) complément Pexels (clé
   // settings.img_key_pexels) sinon Openverse (sans clé), mots-clés EN via Groq.
-  // Assez d'images pour un « pattern interrupt » toutes les ~5 s (min 6) : l'attention
-  // chute si le plan reste statique. Réglable via AI_IMAGES_PER_ARTICLE.
-  const N_IMG = Number(process.env.AI_IMAGES_PER_ARTICLE || Math.max(6, Math.round(durationSec / 5)));
+  // Pattern interrupt : une image toutes les ~7 s (min 5). Économe (moins d'images payantes
+  // à l'étape gpt-image, le reste comblé par Pexels gratuit). Réglable via AI_IMAGES_PER_ARTICLE.
+  const N_IMG = Number(process.env.AI_IMAGES_PER_ARTICLE || Math.max(5, Math.round(durationSec / 7)));
   const images = [];
   if (chosen.cover_image) {
     const rel = "work-article/cover.jpg";
