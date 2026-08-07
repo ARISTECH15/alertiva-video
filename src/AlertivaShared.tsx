@@ -80,6 +80,54 @@ export const NewsSlide: React.FC<{
   );
 };
 
+/**
+ * Carte infographie « chaîne d'info » : image de fond (léger Ken Burns) + voile,
+ * badge INFO + rubrique, TITRE court accrocheur, RÉSUMÉ du passage, barre de progression.
+ * Le texte est rendu par le code (net, charte constante) — pas dessiné par l'IA.
+ */
+export const InfoCard: React.FC<{
+  image?: string; headline?: string; summary?: string; category?: string;
+  index?: number; total?: number; durationFrames: number;
+}> = ({ image, headline, summary, category, index = 0, total = 1, durationFrames }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const zoomIn = index % 2 === 0;
+  const scale = interpolate(frame, [0, durationFrames], zoomIn ? [1.05, 1.16] : [1.16, 1.05], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const appear = spring({ frame, fps, config: { damping: 18 } });
+  return (
+    <AbsoluteFill style={{ background: DARK, overflow: "hidden" }}>
+      {image && <Img src={resolveSrc(image)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale})` }} />}
+      {/* Voile : lisibilité du bloc texte (bas) et du badge (haut). */}
+      <AbsoluteFill style={{ background: "linear-gradient(180deg, rgba(13,13,20,0.82) 0%, rgba(13,13,20,0.30) 26%, rgba(13,13,20,0.22) 46%, rgba(13,13,20,0.94) 100%)" }} />
+      {/* Badge INFO + rubrique */}
+      <div style={{ position: "absolute", top: 116, left: 40, display: "flex", gap: 12, alignItems: "center", opacity: appear }}>
+        <span style={{ background: ALERT, color: "#fff", fontFamily: SANS, fontWeight: 900, fontSize: 34, padding: "6px 18px", borderRadius: 6, letterSpacing: 3 }}>INFO</span>
+        {category && <span style={{ color: CREAM, fontFamily: SANS, fontWeight: 800, fontSize: 30, textTransform: "uppercase", letterSpacing: 2 }}>{category}</span>}
+      </div>
+      {/* Bloc texte : titre court + résumé du passage */}
+      <div style={{ position: "absolute", left: 40, right: 40, bottom: 360, opacity: appear, transform: `translateY(${(1 - appear) * 26}px)` }}>
+        <div style={{ width: 92, height: 8, background: ALERT, borderRadius: 4, marginBottom: 22 }} />
+        {headline && (
+          <div style={{ fontFamily: SERIF, fontWeight: 900, fontSize: 82, lineHeight: 1.04, color: "#fff", textShadow: "0 3px 24px rgba(0,0,0,0.95)", textTransform: "uppercase" }}>
+            {headline}
+          </div>
+        )}
+        {summary && (
+          <div style={{ marginTop: 22, fontFamily: SANS, fontWeight: 600, fontSize: 46, lineHeight: 1.3, color: CREAM, textShadow: "0 2px 16px rgba(0,0,0,0.95)" }}>
+            {summary}
+          </div>
+        )}
+      </div>
+      {/* Barre de progression des sections */}
+      <div style={{ position: "absolute", bottom: 116, left: 40, right: 40, display: "flex", gap: 8 }}>
+        {Array.from({ length: Math.max(1, total) }).map((_, i) => (
+          <div key={i} style={{ flex: 1, height: 6, borderRadius: 3, background: i <= index ? ALERT : "rgba(255,255,255,0.28)" }} />
+        ))}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 /** Slide « Aussi à la une » : rappel de quelques autres titres (cross-promo). */
 export const HeadlineList: React.FC<{ heading: string; items: string[] }> = ({ heading, items }) => {
   const frame = useCurrentFrame();

@@ -15,7 +15,7 @@ import {
   fetchRecentArticles, videoedArticleIds, lastVideoCategories,
   stripMd, sentences, firstSentence, ttsBest, probeDuration, parseVtt,
   humaniser,
-  downloadImage, stockImages, sectionImagePrompts, genImagesAI, renderRemotion, muxFinal, maxrateForSize, ensureUnderLimit, fileMB,
+  downloadImage, stockImages, sectionImagePrompts, genImagesAI, cardStoryboard, renderRemotion, muxFinal, maxrateForSize, ensureUnderLimit, fileMB,
   uploadVideo, recordVideo, CAN_UPLOAD,
 } from "./lib/alertiva.mjs";
 
@@ -92,58 +92,81 @@ async function main() {
 
   const cues = parseVtt(vttAbs);
 
-  // Images : gpt-image (OpenRouter) par section — plafonné, le reste en photos Pexels gratuites.
-  // Pattern interrupt ~toutes les 7 s (min 5), réglable via AI_IMAGES_PER_ARTICLE.
-  const N_IMG = Number(process.env.AI_IMAGES_PER_ARTICLE || Math.max(5, Math.round(durationSec / 7)));
+  // ── Storyboard "cartes" : sections (titre court + résumé) + image de fond par section ──
+  // Cartes designées (texte NET rendu par le code) au lieu de photos brutes. Repli : ancien rendu.
+  const N_CARDS = Math.max(4, Math.min(7, Math.round(durationSec / 12)));
   const GPT_MAX = Number(process.env.GPT_IMAGES_MAX || 4);
-  const images = [];
+  const outroSec = Math.min(2.6, durationSec * 0.09);
+  const bodyEnd = Math.max(0.1, durationSec - outroSec);
 
-  // 1) Images IA gpt-image (payantes, plafonnées) : un prompt par section, la 1ʳᵉ = accroche.
-  console.log("   → images gpt-image (OpenRouter) par section…");
-  try {
-    const aiCount = Math.min(GPT_MAX, N_IMG);
-    const prompts = await sectionImagePrompts(matiere, aiCount);
-    if (prompts?.length) {
+  let story = null;
+  try { story = await cardStoryboard(matiere, N_CARDS); } catch (e) { console.log("   ⚠ storyboard : " + (e.message || e)); }
+
+  let segments;
+  if (story && story.length >= 3) {
+    const N = story.length;
+    console.log(`   → ${N} carte(s) — fonds gpt-image (plafond ${GPT_MAX}) + Pexels…`);
+    const cardImgs = new Array(N).fill(null);
+
+    // 1) Fond gpt-image pour les premières cartes (plafonné, payant).
+    try {
+      const aiCount = Math.min(GPT_MAX, N);
+      const prompts = story.slice(0, aiCount).map((s) => s.image);
       const absPaths = prompts.map((_, i) => path.join(ROOT, "public", `work-article/ai-${i}.png`));
       const written = await genImagesAI(prompts, absPaths);
-      for (const abs of written) images.push(path.relative(path.join(ROOT, "public"), abs).replace(/\\/g, "/"));
-    }
-  } catch (e) { console.log("   ⚠ gpt-image (ignoré, repli Pexels) : " + (e.message || e)); }
-  const nAi = images.length;
+      written.forEach((abs, i) => { cardImgs[i] = path.relative(path.join(ROOT, "public"), abs).replace(/\\/g, "/"); });
+    } catch (e) { console.log("   ⚠ gpt-image (repli Pexels) : " + (e.message || e)); }
 
-  // 2) Compléter : photo réelle de l'article (source presse), puis photos Pexels gratuites.
-  if (chosen.cover_image && images.length < N_IMG) {
-    const rel = "work-article/cover.jpg";
-    if (await downloadImage(chosen.cover_image, path.join(ROOT, "public", rel))) images.push(rel);
+    // 2) Compléter les fonds manquants : photos Pexels gratuites + photo réelle de l'article.
+    const need = cardImgs.filter((x) => !x).length;
+    const pex = [];
+    if (need > 0) {
+      try {
+        const urls = await stockImages({ title: clean(chosen.title), summary: chosen.summary, categorySlug: chosen.category_slug }, need + 3);
+        for (let i = 0; i < urls.length && pex.length < need; i++) {
+          const rel = `work-article/stock-${i}.jpg`;
+          if (await downloadImage(urls[i], path.join(ROOT, "public", rel))) pex.push(rel);
+        }
+      } catch (e) { console.log("   ⚠ Pexels : " + (e.message || e)); }
+      if (chosen.cover_image && pex.length < need) {
+        const rel = "work-article/cover.jpg";
+        if (await downloadImage(chosen.cover_image, path.join(ROOT, "public", rel))) pex.push(rel);
+      }
+    }
+    let pi = 0;
+    for (let i = 0; i < N; i++) if (!cardImgs[i]) cardImgs[i] = pex[pi++] || cardImgs.find(Boolean) || null;
+
+    const per = bodyEnd / N;
+    segments = story.map((s, i) => ({
+      type: "card", image: cardImgs[i],
+      headline: String(s.headline || "").toUpperCase(), summary: s.summary, category: cat,
+      index: i, total: N, from: i * per, to: (i + 1) * per,
+    }));
+    segments.push({ type: "outro", from: bodyEnd, to: durationSec });
+    console.log(`   → ${N} carte(s) prêtes`);
+  } else {
+    // Repli : ancien rendu (photos qui défilent + accroche à l'écran + sous-titres live).
+    console.log("   ⚠ storyboard indisponible → rendu photos classique");
+    const N_IMG = Number(process.env.AI_IMAGES_PER_ARTICLE || Math.max(5, Math.round(durationSec / 7)));
+    const images = [];
+    if (chosen.cover_image) {
+      const rel = "work-article/cover.jpg";
+      if (await downloadImage(chosen.cover_image, path.join(ROOT, "public", rel))) images.push(rel);
+    }
+    try {
+      const urls = await stockImages({ title: clean(chosen.title), summary: chosen.summary, categorySlug: chosen.category_slug }, N_IMG + 2);
+      for (let i = 0; i < urls.length && images.length < N_IMG; i++) {
+        const rel = `work-article/stock-${i}.jpg`;
+        if (await downloadImage(urls[i], path.join(ROOT, "public", rel))) images.push(rel);
+      }
+    } catch (e) { console.log("   ⚠ banque d'images : " + (e.message || e)); }
+    const rawAccroche = (humanise ? firstSentence(humanise) : clean(chosen.title)).trim();
+    const accroche = rawAccroche.length <= 120 ? rawAccroche : rawAccroche.slice(0, 120).replace(/\s+\S*$/, "").replace(/[\s.,;:]+$/, "") + "…";
+    segments = [
+      { type: "article", images, title: accroche, from: 0, to: bodyEnd },
+      { type: "outro", from: bodyEnd, to: durationSec },
+    ];
   }
-  try {
-    const urls = await stockImages(
-      { title: clean(chosen.title), summary: chosen.summary, categorySlug: chosen.category_slug },
-      N_IMG + 2
-    );
-    for (let i = 0; i < urls.length && images.length < N_IMG; i++) {
-      const rel = `work-article/stock-${i}.jpg`;
-      if (await downloadImage(urls[i], path.join(ROOT, "public", rel))) images.push(rel);
-    }
-  } catch (e) { console.log("   ⚠ banque d'images : " + (e.message || e)); }
-  console.log(`   → ${images.length} image(s) : ${nAi} gpt-image + ${images.length - nAi} Pexels/article`);
-
-  // Timeline. L'image démarre à 0 : elle couvre le jingle d'ouverture, il n'y a
-  // plus de carte de générique. Pas de badge rubrique non plus.
-  const outroSec = Math.min(2.6, durationSec * 0.09);
-  // Le texte à l'écran est L'ACCROCHE, pas le titre de l'article : ceux qui
-  // regardent sans le son doivent lire la même promesse que celle qu'on entend.
-  // Accroche affichée à l'écran. On coupe au MOT entier (jamais au milieu) : un titre
-  // tronqué sur « alar… » au lieu d'« alarmante » fait amateur. Phrase entière si
-  // raisonnable, sinon dernier mot complet + « … ».
-  const rawAccroche = (humanise ? firstSentence(humanise) : clean(chosen.title)).trim();
-  const accroche = rawAccroche.length <= 120
-    ? rawAccroche
-    : rawAccroche.slice(0, 120).replace(/\s+\S*$/, "").replace(/[\s.,;:]+$/, "") + "…";
-  const segments = [
-    { type: "article", images, title: accroche, from: 0, to: Math.max(0.1, durationSec - outroSec) },
-    { type: "outro", from: Math.max(0.1, durationSec - outroSec), to: durationSec },
-  ];
 
   const dateStr = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
   const props = { durationSec, audioFile: mp3Rel, date: dateStr, category: "", segments, cues };
