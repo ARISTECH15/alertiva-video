@@ -18,11 +18,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Générer un court échantillon TTS
+      - name: Sonder les voix Qwen valides
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          TTS_VOICE: ${{ github.event.inputs.voice }}
-        run: |
-          node -e "import('./lib/alertiva.mjs').then(m => m.ttsQwen('Bonjour, ceci est un test de la voix Qwen 3 pour Alertiva News. La lutte contre la désinformation continue.', 'out-test.mp3')).then(p => console.log('OK ttsQwen →', p)).catch(e => { console.error('ECHEC ttsQwen:', e.message); process.exit(1); })"
-      - name: Vérifier le fichier audio
-        run: ls -la out-test.mp3 && file out-test.mp3 || true
+        run: node probe-tts.mjs
