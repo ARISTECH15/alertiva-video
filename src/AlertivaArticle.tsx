@@ -7,7 +7,7 @@ export const ARTICLE_FPS = ALERTIVA_FPS;
 
 export type ArticleSegment =
   | { type: "intro"; from: number; to: number }
-  | { type: "article"; image?: string; images?: string[]; title?: string; category?: string; from: number; to: number }
+  | { type: "article"; image?: string; images?: string[]; title?: string; category?: string; fit?: "cover" | "contain"; from: number; to: number }
   | { type: "card"; image?: string; headline?: string; summary?: string; category?: string; index?: number; total?: number; from: number; to: number }
   | { type: "headlines"; heading?: string; items?: string[]; from: number; to: number }
   | { type: "outro"; from: number; to: number };
@@ -33,7 +33,7 @@ export const AlertivaArticle: React.FC<ArticleProps> = ({ audioFile, date, categ
               : s.type === "outro" ? <Outro />
               : s.type === "headlines" ? <HeadlineList heading={s.heading || "Aussi à la une"} items={s.items || []} />
               : s.type === "card" ? <InfoCard image={s.image} headline={s.headline} summary={s.summary} category={s.category} index={s.index} total={s.total} durationFrames={duration} />
-              : <NewsSlide image={s.image} images={s.images} title={s.title} category={s.category} index={1} durationFrames={duration} />}
+              : <NewsSlide image={s.image} images={s.images} title={s.title} category={s.category} index={1} durationFrames={duration} fit={s.fit} />}
           </Sequence>
         );
       })}

@@ -32,7 +32,8 @@ export const TopBar: React.FC<{ date?: string }> = ({ date }) => (
  */
 export const NewsSlide: React.FC<{
   image?: string; images?: string[]; title?: string; category?: string; index?: number; durationFrames: number;
-}> = ({ image, images, title, category, index = 0, durationFrames }) => {
+  fit?: "cover" | "contain";
+}> = ({ image, images, title, category, index = 0, durationFrames, fit = "cover" }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const list = images && images.length ? images : image ? [image] : [];
@@ -53,6 +54,15 @@ export const NewsSlide: React.FC<{
             <Sequence key={k} from={Math.round(start)} durationInFrames={Math.max(1, Math.ceil(per))} layout="none">
               <OffthreadVideo src={resolveSrc(img) as string} muted style={mediaStyle} />
             </Sequence>
+          );
+        }
+        if (fit === "contain") {
+          // Image ENTIÈRE visible (aucun rognage) : fond flou plein cadre + image complète par-dessus.
+          return (
+            <AbsoluteFill key={k} style={{ opacity }}>
+              <Img src={resolveSrc(img)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: "scale(1.12)", filter: "blur(30px) brightness(0.55)" }} />
+              <Img src={resolveSrc(img)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
+            </AbsoluteFill>
           );
         }
         return <Img key={k} src={resolveSrc(img)} style={mediaStyle} />;

@@ -157,7 +157,8 @@ async function main() {
     //    secondes — un générique de marque y gâcherait le seul atout algorithmique.
     const outroSec = Math.min(2.5, durationSec * 0.12);
     const segments = [
-      { type: "article", images: rels, title: job.title, from: 0, to: Math.max(0.1, durationSec - outroSec) },
+      // fit "contain" : on montre l'image ENTIÈRE (fond flou), sans rogner les écritures/détails.
+      { type: "article", images: rels, title: job.title, fit: "contain", from: 0, to: Math.max(0.1, durationSec - outroSec) },
       { type: "outro", from: Math.max(0.1, durationSec - outroSec), to: durationSec },
     ];
 
