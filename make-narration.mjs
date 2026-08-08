@@ -21,6 +21,7 @@ import {
   probeDuration, parseVtt, downloadImage,
   makeMusicBed, renderRemotion, muxFinal, maxrateForSize,
   uploadVideo, recordVideo, CAN_UPLOAD,
+  ttsQwen, ttsBest, copywriting,
 } from "./lib/alertiva.mjs";
 
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -112,10 +113,20 @@ async function main() {
     fs.rmSync(workDir, { recursive: true, force: true });
     fs.mkdirSync(workDir, { recursive: true });
 
-    // 2. La voix : téléchargée telle quelle, jamais régénérée.
+    // 2. La voix : soit le MP3 uploadé (voix de Farid), soit GÉNÉRÉE (Grok Rex via OpenRouter)
+    //    à partir du script — repli automatique ElevenLabs/edge-tts si le TTS échoue.
     const mp3Rel = "work-narration/voice.mp3";
     const mp3Abs = path.join(ROOT, "public", mp3Rel);
-    if (!(await downloadImage(publicUrlOf(job.audio_path), mp3Abs))) die("Audio introuvable : " + job.audio_path);
+    const ttsVtt = path.join(workDir, "tts.vtt");
+    if (job.audio_path) {
+      if (!(await downloadImage(publicUrlOf(job.audio_path), mp3Abs))) die("Audio introuvable : " + job.audio_path);
+    } else if (job.script && String(job.script).trim()) {
+      console.log("   → voix générée (Grok Rex via OpenRouter)…");
+      try { await ttsQwen(String(job.script), mp3Abs); }
+      catch (e) { console.log("   ⚠ TTS échec → repli ElevenLabs/edge-tts : " + (e.message || e)); await ttsBest(String(job.script), mp3Abs, ttsVtt); }
+    } else {
+      die("Ni audio uploadé ni script fourni pour ce job.");
+    }
     let durationSec = probeDuration(mp3Abs);
     if (!durationSec) die("Durée audio illisible (MP3 valide ?).");
     durationSec += 0.4; // petite queue pour ne pas couper le dernier mot
@@ -180,7 +191,15 @@ async function main() {
     const storagePath = `narration/${job.id}.mp4`;
     const publicUrl = await uploadVideo(finalOut, storagePath);
     await recordVideo({ articleId: null, kind: "narration", storagePath, publicUrl, durationSec, title: job.title });
-    await setJob(job.id, { status: "ready", video_url: publicUrl, duration_sec: Math.round(durationSec) });
+
+    // Copywriting réseaux (description + hashtags) à partir du script (ou du titre). Non bloquant.
+    let copyPatch = {};
+    try {
+      const copy = await copywriting(job.script || job.title);
+      if (copy) { copyPatch = { caption: copy.description, hashtags: copy.hashtags }; console.log("   → copywriting OK"); }
+    } catch (e) { console.log("   ⚠ copywriting (ignoré) : " + (e.message || e)); }
+
+    await setJob(job.id, { status: "ready", video_url: publicUrl, duration_sec: Math.round(durationSec), ...copyPatch });
     console.log(`   → dans /studio : ${publicUrl}`);
   } catch (e) {
     await setJob(job.id, { status: "error", error: String(e.message || e).slice(0, 500) }).catch(() => {});

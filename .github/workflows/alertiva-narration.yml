@@ -61,4 +61,8 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           NARRATION_JOB_ID: ${{ github.event.client_payload.job_id || inputs.job_id }}
           WHISPER_MODEL: ${{ vars.WHISPER_MODEL || 'small' }}
+          # Voix générée depuis un script (Grok Rex). Absente → repli ElevenLabs/edge-tts.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          TTS_VOICE: ${{ vars.TTS_VOICE }}
+          TTS_MODEL: ${{ vars.TTS_MODEL }}
         run: node make-narration.mjs
