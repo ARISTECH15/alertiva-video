@@ -22,7 +22,11 @@ export const TopBar: React.FC<{ date?: string }> = ({ date }) => (
     <span style={{ fontFamily: SERIF, fontWeight: 900, fontSize: 40, color: "#fff", letterSpacing: 1 }}>
       ALERTIVA <span style={{ color: ALERT }}>NEWS</span>
     </span>
-    {date && <span style={{ marginLeft: "auto", fontFamily: SANS, fontSize: 26, color: "#aaa" }}>{date}</span>}
+    {/* Nom du site, centré dans l'espace libre entre le logo et la date. */}
+    <span style={{ flex: 1, textAlign: "center", fontFamily: SANS, fontWeight: 800, fontSize: 30, color: CREAM, letterSpacing: 1 }}>
+      alertivanews<span style={{ color: ALERT }}>.com</span>
+    </span>
+    {date && <span style={{ fontFamily: SANS, fontSize: 26, color: "#aaa" }}>{date}</span>}
   </div>
 );
 
