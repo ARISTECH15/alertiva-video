@@ -1,0 +1,26 @@
+name: Alertiva — Maintien en vie des tâches planifiées
+
+# GitHub désactive les tâches planifiées d'un dépôt public après 60 jours sans
+# modification du dépôt (c'est arrivé le 16/10/2026 : 20 jours sans aucune
+# publication). Réactiver une tâche via l'API remet ce compteur à zéro : on le fait
+# chaque semaine pour toutes les tâches planifiées, y compris celle-ci.
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Réactiver les tâches planifiées
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          for wf in alertiva-article.yml alertiva-jt.yml alertiva-social.yml keepalive.yml; do
+            gh api -X PUT "repos/$REPO/actions/workflows/$wf/enable" && echo "ok $wf"
+          done
