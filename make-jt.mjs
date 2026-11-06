@@ -17,20 +17,31 @@ import {
   uploadVideo, recordVideo, CAN_UPLOAD,
 } from "./lib/alertiva.mjs";
 
-const N = 15; // JT complet : ~15 titres pour viser plusieurs minutes
+// « L'essentiel du jour » : peu de sujets, les plus forts, mieux expliqués (audit phase 6).
+// Un journal de 3 min regardé jusqu'au bout pèse plus qu'un journal de 8 min abandonné.
+const N = Number(process.env.JT_N || 6);
 
 async function main() {
   console.log("🎬 Alertiva — Le JT du soir");
 
-  const rows = await fetchRecentArticles(40);
-  if (!Array.isArray(rows) || rows.length < 4) return die("Pas assez d'articles avec image.");
+  const recent = await fetchRecentArticles(80);
+  if (!Array.isArray(recent)) return die("Lecture des articles impossible.");
+  // Articles du moteur v2 des dernières 24 h, du plus fort potentiel au plus faible ;
+  // repli sur les plus récents si le moteur n'a pas encore assez publié.
+  const since = Date.now() - 24 * 3600_000;
+  const v2 = recent
+    .filter((a) => a.engine_version && !a.is_sensitive && new Date(a.published_at).getTime() >= since)
+    .sort((a, b) => (b.trend_score ?? 0) - (a.trend_score ?? 0));
+  const rows = v2.length >= 4 ? v2 : recent;
+  if (rows.length < 4) return die("Pas assez d'articles avec image.");
+  console.log(`   → ${v2.length} articles v2 des dernières 24 h${v2.length >= 4 ? "" : " (insuffisant : repli sur les plus récents)"}`);
 
-  // Variété : au plus 3 par rubrique.
+  // Variété : au plus 2 par rubrique.
   const perCat = {};
   const arts = [];
   for (const a of rows) {
     perCat[a.category_slug] = (perCat[a.category_slug] || 0) + 1;
-    if (perCat[a.category_slug] <= 3) arts.push(a);
+    if (perCat[a.category_slug] <= 2) arts.push(a);
     if (arts.length >= N) break;
   }
   console.log(`   → ${arts.length} titres retenus`);
@@ -57,13 +68,13 @@ async function main() {
   // ~75 mots par sujet ≈ 30 s : 15 sujets donnent un journal d'environ 7 min 30,
   // proche des JT d'avant. Sans consigne chiffrée ET sans matière suffisante en
   // entrée, le modèle rendait 11 mots par sujet et le JT tombait à 69 secondes.
-  const MOTS_PAR_SUJET = Number(process.env.JT_MOTS_PAR_SUJET || 75);
+  const MOTS_PAR_SUJET = Number(process.env.JT_MOTS_PAR_SUJET || 70);
   console.log("   → réécriture parlée du journal (accroche + question finale)…");
   const humanises = await humaniserJT(sujetsRiches, { motsParSujet: MOTS_PAR_SUJET });
   // Repli sur la version COURTE : la version riche donnerait un JT ingérable.
   let parts = humanises || sujetsCourts.map((s, i) =>
     i === sujetsCourts.length - 1
-      ? `${s} Et vous, qu'est-ce qui vous marque le plus dans l'actualité du jour ? Dites-le en commentaire.`
+      ? `${s} Et vous, laquelle de ces infos vous concerne directement ? Dites-le en commentaire, et envoyez cette vidéo à quelqu'un que ça aide.`
       : s);
   console.log(humanises ? `     ${parts.length} passages réécrits` : "     ⚠ IA indisponible → texte de repli (version courte)");
 
@@ -157,12 +168,12 @@ async function main() {
 
     // Vertical (9:16) → Supabase (Studio + TikTok à publier à la main)
     const urlV = await uploadVideo(finalVertical, `jt/${day}.mp4`);
-    await recordVideo({ articleId: null, kind: "jt", storagePath: `jt/${day}.mp4`, publicUrl: urlV, durationSec, title: `Le JT — ${dateStr}` });
+    await recordVideo({ articleId: null, kind: "jt", storagePath: `jt/${day}.mp4`, publicUrl: urlV, durationSec, title: `L'essentiel du jour — ${dateStr}` });
     console.log(`   → JT vertical en ligne : ${urlV}`);
 
     // Paysage (16:9) → Supabase + YouTube (format long)
     const urlW = await uploadVideo(finalWide, `jt-yt/${day}.mp4`);
-    await recordVideo({ articleId: null, kind: "jt_yt", storagePath: `jt-yt/${day}.mp4`, publicUrl: urlW, durationSec, title: `Le JT (YouTube) — ${dateStr}` });
+    await recordVideo({ articleId: null, kind: "jt_yt", storagePath: `jt-yt/${day}.mp4`, publicUrl: urlW, durationSec, title: `L'essentiel du jour (YouTube) — ${dateStr}` });
     console.log(`   → JT paysage en ligne : ${urlW}`);
 
     if (process.env.YT_ENABLED !== "0") {
@@ -180,7 +191,7 @@ async function main() {
             `🌐 https://alertivanews.com\n🎵 TikTok : @alertiva\n▶️ YouTube : @ALERTIVANEWS\n\n` +
             `#actualité #news #journal #info #alertiva`;
           const id = await yt.uploadVideo(buf, token, {
-            title: `JT Alertiva News — ${dateStr}`.slice(0, 100), description: desc.slice(0, 4900),
+            title: `L'essentiel du jour : ${N} infos qui vous concernent — ${dateStr}`.slice(0, 100), description: desc.slice(0, 4900),
             tags: ["actualité", "news", "journal", "JT", "alertiva"], privacy: "public",
           });
           await yt.recordSocialPost({ mediaUrl: urlW, videoId: id });
@@ -195,8 +206,8 @@ async function main() {
     if (process.env.META_ENABLED !== "0") {
       try {
         const meta = await import("./lib/facebook.mjs");
-        const cap = `Le JT Alertiva News du ${dateStr} — l'essentiel de l'actualité.\n\n` +
-          `👍 Un like, 🔔 abonne-toi et 📲 partage. Quel sujet t'a le plus marqué ? Dis-le en commentaire.\n\n` +
+        const cap = `L'essentiel du ${dateStr} : les infos qui changent quelque chose pour vous, en 3 minutes.\n\n` +
+          `📲 Envoie-la à quelqu'un que ça aide. Laquelle te concerne ? Dis-le en commentaire.\n\n` +
           `🔗 Tous nos articles : alertivanews.com (lien en bio)\n\n` +
           `Alertiva News — l'essentiel de l'actualité, vérifiée et sourcée, chaque jour.\n\n` +
           `#actualité #news #JT #alertiva`;
