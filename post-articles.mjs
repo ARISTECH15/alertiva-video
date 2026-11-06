@@ -30,20 +30,24 @@ async function alreadyPosted(url) {
 async function main() {
   if (!SR) throw new Error("SUPABASE_SERVICE_ROLE_KEY manquante");
   const CAP = Number(process.env.ARTICLE_POST_CAP || 3);
+  // Moteur v2 uniquement (articles explicatifs), les mieux notés des dernières 24 h d'abord.
+  const since = new Date(Date.now() - 24 * 3600_000).toISOString();
   const arts = await sbGet(
-    "news_articles?status=eq.published&cover_image=not.is.null&is_sensitive=eq.false&order=published_at.desc&limit=25&select=slug,title,summary,cover_image"
+    `news_articles?status=eq.published&cover_image=not.is.null&is_sensitive=eq.false&engine_version=not.is.null&published_at=gte.${since}` +
+    "&order=trend_score.desc.nullslast,published_at.desc&limit=25&select=slug,title,summary,cover_image,social_caption,hook"
   );
   let done = 0;
   for (const a of arts) {
     if (done >= CAP) break;
     const url = `${SITE}/article/${a.slug}`;
     if (await alreadyPosted(url)) continue;
-    const teaser = String(a.summary || a.title).slice(0, 280);
+    const teaser = String(a.social_caption || a.summary || a.title).slice(0, 400);
+    const head = a.hook || a.title;
     let posted = false;
-    try { const id = await postFacebookLink(url, `${a.title}\n\n${teaser}`); await record("facebook_link", url, id); console.log("   FB:", id); posted = true; }
+    try { const id = await postFacebookLink(url, `${head}\n\n${teaser}`); await record("facebook_link", url, id); console.log("   FB:", id); posted = true; }
     catch (e) { console.log("   ⚠ FB : " + (e.message || e)); }
     try {
-      const cap = `${a.title}\n\n${teaser}\n\n🔗 Toute l'actu sur alertivanews.com\n\n#actualité #news #info #alertiva`;
+      const cap = `${head}\n\n${teaser}\n\n📲 Envoie ça à quelqu'un que ça concerne.\n🔗 L'explication complète : lien en bio (alertivanews.com)`;
       const id = await postInstagramImage(a.cover_image, cap); await record("instagram_image", url, id); console.log("   IG:", id); posted = true;
     } catch (e) { console.log("   ⚠ IG : " + (e.message || e)); }
     if (posted) { done++; console.log("✅ posté : " + a.title); }

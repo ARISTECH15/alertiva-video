@@ -24,7 +24,7 @@ const clean = (s) => stripMd(s);
 // le remplissage était l'exact contraire d'une narration humaine.
 // > 60 s pour être monétisable (TikTok Creator Rewards). On vise ~75 s pour garder
 // une marge après variabilité de la voix + l'outro.
-const TARGET_SEC = Number(process.env.ARTICLE_TARGET_SEC || 85);
+const TARGET_SEC = Number(process.env.ARTICLE_TARGET_SEC || 65);
 
 async function main() {
   console.log("🎬 Alertiva — vidéo par article");
@@ -36,15 +36,20 @@ async function main() {
   const lastCats = await lastVideoCategories(3);
 
   // Candidats : publiés, avec image + résumé, non sensibles, pas déjà en vidéo.
+  // Moteur v2 d'abord (articles explicatifs, classés par score de potentiel), puis le reste.
   const candidates = recent
     .filter((a) => a.cover_image && a.summary && !a.is_sensitive && !done.has(a.id))
-    .sort((a, b) => (b.views - a.views) || (new Date(b.published_at) - new Date(a.published_at)));
+    .sort((a, b) =>
+      ((b.engine_version ? 1 : 0) - (a.engine_version ? 1 : 0)) ||
+      ((b.trend_score || 0) - (a.trend_score || 0)) ||
+      (b.views - a.views) || (new Date(b.published_at) - new Date(a.published_at)));
 
   if (!candidates.length) return console.log("   Rien à produire (tout est déjà en vidéo).");
 
   // Diversité : éviter la rubrique des dernières vidéos si possible.
   const chosen = candidates.find((a) => !lastCats.includes(a.category_slug)) || candidates[0];
-  const cat = CAT_FR[chosen.category_slug] || "À la une";
+  const FORMAT_FR = { "alerte-arnaque": "Alerte arnaque", "ca-change": "Ça change pour vous", "le-chiffre": "Le chiffre", ia: "L'IA à connaître", comprendre: "Comprendre en 60 s" };
+  const cat = FORMAT_FR[chosen.format] || CAT_FR[chosen.category_slug] || "À la une";
   console.log(`   → « ${chosen.title} » (${cat}, ${chosen.views} vues)`);
 
   // Autres titres pour le rappel « Aussi à la une » (rubriques variées).
@@ -77,7 +82,7 @@ async function main() {
   const vttAbs = path.join(workDir, "voice.vtt");
 
   console.log("   → réécriture parlée (accroche + question finale)…");
-  const humanise = await humaniser(matiere, { secondes: TARGET_SEC, question: true });
+  const humanise = await humaniser(matiere, { secondes: TARGET_SEC, question: true, hook: chosen.hook || "" });
   // Repli sans IA : au moins on retire le générique et le titre annoncé.
   const secours = [...sumSents, ...contentSents.slice(0, 3)].join(" ") +
     ` Et vous, qu'est-ce que vous en pensez ? Dites-le en commentaire, et retrouvez toute l'actualité sur alertiva news point com.`;
@@ -95,7 +100,8 @@ async function main() {
   // ── Storyboard "cartes" : sections (titre court + résumé) + image de fond par section ──
   // Cartes designées (texte NET rendu par le code) au lieu de photos brutes. Repli : ancien rendu.
   const N_CARDS = Math.max(4, Math.min(7, Math.round(durationSec / 12)));
-  const GPT_MAX = Number(process.env.GPT_IMAGES_MAX || 4);
+  // Pas d'images générées par IA par défaut : elles peuvent passer pour de vraies photos (audit phase 4).
+  const GPT_MAX = Number(process.env.GPT_IMAGES_MAX || 0);
   const outroSec = Math.min(2.6, durationSec * 0.09);
   const bodyEnd = Math.max(0.1, durationSec - outroSec);
 
